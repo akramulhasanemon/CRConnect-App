@@ -1,0 +1,1365 @@
+package com.example.crconnect.student
+
+import android.content.Context
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.crconnect.ProfileImageCacheHelper
+import com.example.crconnect.RoutineLocalCache
+import com.example.crconnect.SessionManager
+import com.example.crconnect.ToastHelper
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.ChildEventListener
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.MutableData
+import com.google.firebase.database.Transaction
+import com.google.firebase.database.ValueEventListener
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.Calendar
+import java.util.Locale
+
+class StudentPortalViewModel : ViewModel() {
+
+    private val _uiState = MutableStateFlow(StudentPortalUiState())
+    val uiState: StateFlow<StudentPortalUiState> = _uiState.asStateFlow()
+
+    private var dbRef: DatabaseReference? = null
+    private var firestoreRegistration: ListenerRegistration? = null
+
+    private var sanitizedDept: String = "Dept_of_CSE"
+    private var sanitizedSec: String = "6"
+    private var sanitizedStudentId: String = "voter"
+    private var rawDept: String = "Dept. of CSE"
+    private var rawSec: String = "6"
+    private var rawIntake: String = "55"
+
+    private var isInitialized = false
+    private var isFirstAnnouncementLoad = true
+
+    private var candidatesListener: ValueEventListener? = null
+    private var gateControlListener: ValueEventListener? = null
+    private var voterListener: ValueEventListener? = null
+    private var announcementsListener: ChildEventListener? = null
+
+    private val timerHandler = Handler(Looper.getMainLooper())
+    private var timerRunnable: Runnable? = null
+    private var endTimeMillis: Long = 0L
+
+    fun initSession(context: Context) {
+        if (isInitialized) return
+        isInitialized = true
+
+        val session = SessionManager(context)
+        val storedDept = session.userDept.ifBlank { "Department of CSE, BUBT" }
+        rawDept = if (storedDept.equals("English (ENG)", ignoreCase = true) || storedDept.equals("ENG", ignoreCase = true)) {
+            val correctedDept = "Department of CSE, BUBT"
+            session.setUserDept(correctedDept)
+            val uid = FirebaseAuth.getInstance().currentUser?.uid
+            val dbRef = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com").getReference("crconnect_db")
+            if (uid != null) {
+                dbRef.child("users").child(uid).child("dept").setValue(correctedDept)
+                dbRef.child("users").child(uid).child("department").setValue(correctedDept)
+            }
+            val rawId = session.userID.ifBlank { "student" }.replace(Regex("[^a-zA-Z0-9_]"), "_")
+            if (rawId.isNotBlank()) {
+                dbRef.child("users").child(rawId).child("dept").setValue(correctedDept)
+                dbRef.child("users").child(rawId).child("department").setValue(correctedDept)
+            }
+            correctedDept
+        } else {
+            storedDept
+        }
+        rawIntake = session.userIntake.ifBlank { "55" }
+        val secStr = if (session.userRole.contains("Teacher", ignoreCase = true)) session.assignedSection else session.userSection
+        rawSec = if (secStr.isNotBlank() && secStr != "--") secStr else "6"
+        val rawId = session.userID.ifBlank { "student" }
+
+        sanitizedDept = sanitizeDepartment(rawDept)
+        sanitizedSec = sanitizeSection(rawSec)
+        sanitizedStudentId = rawId.replace(Regex("[^a-zA-Z0-9_]"), "_")
+
+        val studentName = session.userName.ifBlank { "Student" }
+        val initials = computeInitials(studentName)
+        val isUserCr = session.userRole.contains("CR", ignoreCase = true)
+
+        var term = session.currentTerm
+        if (term.contains("Spring 2025 (Year 3)", ignoreCase = true)) {
+            term = "--"
+            session.setCurrentTerm("--")
+        }
+
+        val profileModel = UserProfileModel(
+            name = studentName,
+            email = session.userEmail.ifBlank { "student@bubt.edu.bd" },
+            studentId = session.userID.ifBlank { "--" },
+            intake = session.userIntake.ifBlank { "--" },
+            section = rawSec,
+            department = rawDept,
+            initials = initials,
+            cgpa = session.studentCgpa,
+            profileImageUrl = session.profileImageUrl,
+            isCr = isUserCr,
+            advisorName = session.advisorName.ifBlank { "Nasrin Akter" },
+            advisorEmail = session.advisorEmail.ifBlank { "nasrinshipa@bubt.edu.bd" },
+            currentTerm = term.ifBlank { "--" }
+        )
+
+        val todayIdx = getTodayDayIndex()
+        val currentThemeMode = session.studentThemeMode
+        _uiState.update {
+            it.copy(
+                profile = profileModel,
+                isCr = isUserCr,
+                selectedDayIndex = todayIdx,
+                themeMode = currentThemeMode
+            )
+        }
+
+        // Check for app updates on GitHub Releases in background
+        checkForAppUpdates(context, forceCheck = false)
+
+        // Background caching of profile image if it's a remote URL
+        val rawPhotoUrl = session.profileImageUrl
+        if (rawPhotoUrl.isNotBlank() && (rawPhotoUrl.startsWith("http://") || rawPhotoUrl.startsWith("https://") || rawPhotoUrl.startsWith("content://"))) {
+            ProfileImageCacheHelper.saveAndCacheProfileImage(context, rawPhotoUrl, session.userID.ifBlank { session.userEmail }) { cachedPath ->
+                if (cachedPath.isNotBlank() && cachedPath != rawPhotoUrl) {
+                    session.setProfileImageUrl(cachedPath)
+                    _uiState.update { currentState ->
+                        currentState.copy(profile = currentState.profile.copy(profileImageUrl = cachedPath))
+                    }
+                }
+            }
+        }
+
+        val repo = RoutineRepository(context)
+        val savedEntries = repo.getClassEntries().filterNot { entry ->
+            (entry.course == "CSE 301 · Algorithms" || entry.course == "CSE 305 · Database" || entry.course == "MAT 211 · Numerical Methods") && entry.faculty == "TBA"
+        }
+        if (savedEntries.isNotEmpty()) {
+            repo.replaceClassEntries(savedEntries)
+            loadRoutineEntriesIntoState(savedEntries, context)
+        }
+        // Background sync: load latest cloud routine silently without blocking UI
+        loadFirestoreRoutineToCache(context)
+
+        setupFirebaseRealtimeDatabase()
+    }
+
+    fun getTodayDayIndex(): Int {
+        val cal = Calendar.getInstance()
+        return when (cal.get(Calendar.DAY_OF_WEEK)) {
+            Calendar.SATURDAY -> 0
+            Calendar.SUNDAY -> 1
+            Calendar.MONDAY -> 2
+            Calendar.TUESDAY -> 3
+            Calendar.WEDNESDAY -> 4
+            Calendar.THURSDAY -> 5
+            Calendar.FRIDAY -> 6
+            else -> 0
+        }
+    }
+
+    private fun loadRoutineEntriesIntoState(entries: List<ClassEntry>, context: Context? = null) {
+        try {
+            if (entries.isEmpty()) return
+            val daysList = listOf("SAT", "SUN", "MON", "TUE", "WED", "THR", "FRI")
+            val loadedMap = mutableMapOf<Int, MutableList<ClassModel>>()
+
+            val attendanceMap = context?.let { RoutineRepository(it).getWeeklyAttendanceMap() } ?: emptyMap()
+
+            for (entry in entries) {
+                val dayIdx = daysList.indexOfFirst { it.equals(entry.day, ignoreCase = true) }
+                val targetIdx = if (dayIdx != -1) dayIdx else 0
+                val timeSlot = "${entry.startTime} - ${entry.endTime}"
+                val courseDisplay = if (entry.faculty.isNotBlank() && entry.faculty != "TBA" && !entry.course.contains("(")) {
+                    "${entry.course} (${entry.faculty})"
+                } else {
+                    entry.course
+                }
+                val roomDisplay = if (entry.room.startsWith("Room") || entry.room.startsWith("TBA")) entry.room else "Room ${entry.room}"
+                val classId = "${entry.day}_${entry.course}_${entry.startTime}"
+
+                val classModel = ClassModel(
+                    id = classId,
+                    timeSlot = timeSlot,
+                    courseName = courseDisplay,
+                    room = roomDisplay,
+                    attendanceState = attendanceMap[classId]
+                )
+                val currentList = loadedMap.getOrPut(targetIdx) { mutableListOf() }
+                if (!currentList.any { it.courseName == classModel.courseName && it.timeSlot == classModel.timeSlot }) {
+                    currentList.add(classModel)
+                }
+            }
+
+            loadedMap.values.forEach { list ->
+                list.sortBy { startMinutes(it.timeSlot) }
+            }
+
+            val updatedDays = _uiState.value.scheduleDays.map { day ->
+                val hasClasses = (loadedMap[day.dayIndex]?.isNotEmpty() == true)
+                day.copy(hasClasses = hasClasses)
+            }
+
+            _uiState.update { currentState ->
+                currentState.copy(
+                    classMap = loadedMap,
+                    scheduleDays = updatedDays
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("StudentPortalViewModel", "Error updating routine entries state", e)
+        }
+    }
+
+    private fun loadFirestoreRoutineToCache(context: Context) {
+        try {
+            val session = SessionManager(context)
+            val uid = FirebaseAuth.getInstance().currentUser?.uid
+                ?: session.userID.ifBlank { return }
+
+            if (uid.isBlank()) return
+
+            val db = FirebaseFirestore.getInstance()
+            db.collection("users")
+                .document(uid)
+                .collection("routine")
+                .get()
+                .addOnSuccessListener { snapshot ->
+                    if (snapshot != null && !snapshot.isEmpty) {
+                        val entries = mutableListOf<ClassEntry>()
+                        for (doc in snapshot.documents) {
+                            val day = doc.getString("day") ?: ""
+                            val course = doc.getString("courseCode") ?: doc.getString("subject") ?: ""
+                            val faculty = doc.getString("faculty") ?: doc.getString("teacher") ?: "TBA"
+                            val room = doc.getString("room") ?: "TBA"
+                            val startTime = doc.getString("startTime") ?: "08:15 AM"
+                            val endTime = doc.getString("endTime") ?: "09:45 AM"
+                            val intake = doc.getString("intake") ?: rawIntake
+                            val section = doc.getString("section") ?: rawSec
+                            val needsReview = doc.getBoolean("needsReview") ?: false
+
+                            if (day.isNotBlank() && course.isNotBlank()) {
+                                entries.add(
+                                    ClassEntry(
+                                        day = day,
+                                        course = course,
+                                        faculty = faculty,
+                                        room = room,
+                                        startTime = startTime,
+                                        endTime = endTime,
+                                        intake = intake,
+                                        section = section,
+                                        needsReview = needsReview
+                                    )
+                                )
+                            }
+                        }
+
+                        if (entries.isNotEmpty()) {
+                            val repo = RoutineRepository(context)
+                            repo.replaceClassEntries(entries)
+                            loadRoutineEntriesIntoState(entries, context)
+                        }
+                    }
+                }
+                .addOnFailureListener { e ->
+                    Log.e("StudentPortalViewModel", "Error loading routine from Firestore backup", e)
+                }
+        } catch (e: Exception) {
+            Log.e("StudentPortalViewModel", "Error in loadFirestoreRoutineToCache", e)
+        }
+    }
+
+    private fun setupFirebaseRealtimeDatabase() {
+        try {
+            val rtdb = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com")
+            dbRef = rtdb.getReference("crconnect_db")
+
+            // 1. Candidates Listener
+            val candRef = dbRef?.child("voting_controls")?.child(sanitizedDept)?.child(sanitizedSec)?.child("candidates")
+            candidatesListener = object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    parseCandidatesSnapshot(snapshot)
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e("StudentPortalViewModel", "Candidates listener cancelled: ${error.message}")
+                }
+            }
+            candRef?.addValueEventListener(candidatesListener as ValueEventListener)
+
+            // 2. Gate Control & Timer Listener
+            val gateRef = dbRef?.child("voting_controls")?.child(sanitizedDept)?.child(sanitizedSec)
+            gateControlListener = object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    if (!snapshot.exists()) return
+
+                    val isOpen = snapshot.child("isGateOpen").getValue(Boolean::class.java) ?: false
+                    val statusStr = snapshot.child("status").getValue(String::class.java) ?: if (isOpen) "Open" else "Closed"
+                    val endMs = snapshot.child("endTimeMillis").getValue(Long::class.java) ?: 0L
+
+                    endTimeMillis = endMs
+
+                    _uiState.update { currentState ->
+                        currentState.copy(
+                            isGateOpen = isOpen,
+                            timerStatus = statusStr
+                        )
+                    }
+
+                    if (isOpen && endTimeMillis > System.currentTimeMillis()) {
+                        startTimerLoop()
+                    } else {
+                        stopTimerLoop()
+                        _uiState.update { it.copy(timerText = "00:00") }
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e("StudentPortalViewModel", "Gate listener cancelled: ${error.message}")
+                }
+            }
+            gateRef?.addValueEventListener(gateControlListener as ValueEventListener)
+
+            // 3. Voter Check Listener
+            val voterRef = dbRef?.child("voting_controls")?.child(sanitizedDept)?.child(sanitizedSec)?.child("voters")?.child(sanitizedStudentId)
+            voterListener = object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val voted = snapshot.exists()
+                    val candidateIdStr = snapshot.child("candidateId").getValue(String::class.java)
+                    _uiState.update { currentState ->
+                        currentState.copy(
+                            hasVoted = voted,
+                            votedCandidateId = candidateIdStr ?: currentState.votedCandidateId
+                        )
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {}
+            }
+            voterRef?.addValueEventListener(voterListener as ValueEventListener)
+
+            // 4. Announcements / Notifications Listener
+            val notifRef = dbRef?.child("voting_controls")?.child(sanitizedDept)?.child(sanitizedSec)?.child("announcements")
+            announcementsListener = object : ChildEventListener {
+                override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                    if (isFirstAnnouncementLoad) return
+
+                    val title = snapshot.child("title").getValue(String::class.java) ?: "Update"
+                    val body = snapshot.child("body").getValue(String::class.java) ?: ""
+
+                    _uiState.update { currentState ->
+                        currentState.copy(snackbarMessage = "$title: $body")
+                    }
+                }
+
+                override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {}
+                override fun onChildRemoved(snapshot: DataSnapshot) {}
+                override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+                override fun onCancelled(error: DatabaseError) {}
+            }
+            notifRef?.addChildEventListener(announcementsListener as ChildEventListener)
+
+            // Allow child added events after 2 seconds to avoid popping toasts for historical announcements
+            Handler(Looper.getMainLooper()).postDelayed({
+                isFirstAnnouncementLoad = false
+            }, 2000)
+
+            // 5. Live User Role Listener & Profile Image Listener
+            val authUser = FirebaseAuth.getInstance().currentUser
+            if (authUser != null) {
+                dbRef?.child("users")?.child(authUser.uid)?.child("role")?.addValueEventListener(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        val roleStr = snapshot.getValue(String::class.java) ?: ""
+                        val isUserCr = roleStr.contains("CR", ignoreCase = true)
+                        _uiState.update { currentState ->
+                            currentState.copy(
+                                isCr = isUserCr,
+                                profile = currentState.profile.copy(isCr = isUserCr)
+                            )
+                        }
+                    }
+                    override fun onCancelled(error: DatabaseError) {}
+                })
+
+                dbRef?.child("users")?.child(authUser.uid)?.child("profileImageUrl")?.addValueEventListener(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        val dbImg = snapshot.getValue(String::class.java) ?: ""
+                        if (dbImg.isNotBlank() && dbImg != _uiState.value.profile.profileImageUrl) {
+                            val context = FirebaseDatabase.getInstance().app.applicationContext
+                            ProfileImageCacheHelper.saveAndCacheProfileImage(context, dbImg, authUser.uid) { localPath ->
+                                val finalPath = if (localPath.isNotBlank()) localPath else dbImg
+                                SessionManager(context).setProfileImageUrl(finalPath)
+                                _uiState.update { currentState ->
+                                    currentState.copy(
+                                        profile = currentState.profile.copy(profileImageUrl = finalPath)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    override fun onCancelled(error: DatabaseError) {}
+                })
+
+                dbRef?.child("users")?.child(authUser.uid)?.child("cgpa")?.addValueEventListener(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        val dbCgpa = snapshot.getValue(String::class.java) ?: ""
+                        if (dbCgpa.isNotBlank() && dbCgpa != "--" && dbCgpa != _uiState.value.profile.cgpa) {
+                            val context = FirebaseDatabase.getInstance().app.applicationContext
+                            SessionManager(context).setStudentCgpa(dbCgpa)
+                            _uiState.update { currentState ->
+                                currentState.copy(
+                                    profile = currentState.profile.copy(cgpa = dbCgpa)
+                                )
+                            }
+                        }
+                    }
+                    override fun onCancelled(error: DatabaseError) {}
+                })
+            }
+
+        } catch (e: Exception) {
+            Log.e("StudentPortalViewModel", "Error setting up RTDB listeners", e)
+        }
+    }
+
+    private fun sanitizeDepartment(dept: String): String {
+        if (dept.isBlank() || dept == "--") return "CSE"
+        val normalized = dept.trim().uppercase(Locale.getDefault())
+        return when {
+            normalized.contains("CSE") || normalized.contains("COMPUTER SCIENCE") -> "CSE"
+            normalized.contains("EEE") || normalized.contains("ELECTRICAL") -> "EEE"
+            normalized.contains("BBA") || normalized.contains("BUSINESS") -> "BBA"
+            normalized.contains("ENG") || normalized.contains("ENGLISH") -> "ENG"
+            normalized.contains("LAW") || normalized.contains("JUSTICE") -> "LAW"
+            normalized.contains("TEXTILE") || normalized.contains("TE") -> "TE"
+            normalized.contains("CIVIL") || normalized.contains("CE") -> "CE"
+            normalized.contains("DATA SCIENCE") || normalized.contains("DSE") -> "DSE"
+            normalized.contains("MATH") || normalized.contains("MNS") || normalized.contains("STAT") -> "MNS"
+            normalized.contains("ECO") || normalized.contains("ECONOMICS") -> "ECO"
+            normalized.contains("ACC") || normalized.contains("ACCOUNTING") -> "ACC"
+            normalized.contains("FIN") || normalized.contains("FINANCE") -> "FIN"
+            normalized.contains("MGT") || normalized.contains("MANAGEMENT") -> "MGT"
+            normalized.contains("MKT") || normalized.contains("MARKETING") -> "MKT"
+            else -> {
+                val clean = dept.trim().replace(Regex("[^a-zA-Z0-9_]"), "_")
+                if (clean.isBlank()) "CSE" else clean
+            }
+        }
+    }
+
+    private fun sanitizeSection(sec: String): String {
+        if (sec.isBlank() || sec == "--" || sec.equals("5A", ignoreCase = true)) return "6"
+        val digitsOnly = sec.replace(Regex("(?i)^section\\s*|^sec\\.?\\s*"), "").trim()
+        val clean = digitsOnly.replace(Regex("[^a-zA-Z0-9_]"), "_")
+        return if (clean.isBlank()) "6" else clean
+    }
+
+    private fun parseCandidatesSnapshot(snapshot: DataSnapshot) {
+        val list = mutableListOf<CandidateModel>()
+        for (ds in snapshot.children) {
+            val key = ds.key ?: continue
+            val name = ds.child("name").getValue(String::class.java)
+                ?: ds.child("candidateName").getValue(String::class.java)
+                ?: "Candidate"
+            val dept = ds.child("department").getValue(String::class.java)
+                ?: ds.child("dept").getValue(String::class.java)
+                ?: rawDept
+            val votesVal = ds.child("votes").getValue(Long::class.java)?.toInt()
+                ?: ds.child("votes").getValue(Int::class.java)
+                ?: 0
+            val manifesto = ds.child("manifesto").getValue(String::class.java) ?: ""
+            val photoUrl = ds.child("photoUrl").getValue(String::class.java) ?: ""
+            val imageUrl = ds.child("imageUrl").getValue(String::class.java) ?: ""
+            val finalPhotoUrl = if (imageUrl.isNotBlank()) imageUrl else photoUrl
+
+            val candSec = ds.child("section").getValue(String::class.java)
+                ?: ds.child("assignedSection").getValue(String::class.java)
+
+            if (candSec != null && candSec.isNotBlank() && !candSec.equals("--", ignoreCase = true)) {
+                val cleanCandSec = sanitizeSection(candSec)
+                if (!candSec.equals(rawSec, ignoreCase = true) &&
+                    !candSec.equals(sanitizedSec, ignoreCase = true) &&
+                    !cleanCandSec.equals(sanitizedSec, ignoreCase = true)) {
+                    continue
+                }
+            }
+
+            list.add(
+                CandidateModel(
+                    id = key,
+                    name = name,
+                    department = dept,
+                    votes = votesVal,
+                    manifesto = manifesto,
+                    photoUrl = finalPhotoUrl
+                )
+            )
+        }
+
+        _uiState.update { currentState ->
+            currentState.copy(candidates = list)
+        }
+    }
+
+    private fun startTimerLoop() {
+        stopTimerLoop()
+        timerRunnable = object : Runnable {
+            override fun run() {
+                val now = System.currentTimeMillis()
+                val diff = endTimeMillis - now
+                if (diff <= 0) {
+                    _uiState.update { it.copy(timerText = "00:00", timerStatus = "Closed", isGateOpen = false) }
+                    stopTimerLoop()
+                    return
+                }
+
+                val totalSeconds = diff / 1000
+                val minutes = totalSeconds / 60
+                val seconds = totalSeconds % 60
+                val formatted = String.format(Locale.US, "%02d:%02d", minutes, seconds)
+
+                _uiState.update { it.copy(timerText = formatted) }
+                timerHandler.postDelayed(this, 1000)
+            }
+        }
+        timerHandler.post(timerRunnable!!)
+    }
+
+    private fun stopTimerLoop() {
+        timerRunnable?.let { timerHandler.removeCallbacks(it) }
+        timerRunnable = null
+    }
+
+    private fun setupFirestoreRoutines() {
+        try {
+            val db = FirebaseFirestore.getInstance()
+            val deptKey = getSanitizedKey(rawDept)
+            val intakeKey = getSanitizedKey(rawIntake)
+            val secKey = getSanitizedKey(rawSec)
+
+            firestoreRegistration?.remove()
+            firestoreRegistration = db.collection("routines")
+                .document(deptKey)
+                .collection(intakeKey)
+                .document(secKey)
+                .collection("schedule")
+                .addSnapshotListener { querySnapshot, error ->
+                    if (error != null || querySnapshot == null || querySnapshot.isEmpty) {
+                        Log.d("StudentPortalViewModel", "Firestore schedule empty/offline, keeping local routine")
+                        return@addSnapshotListener
+                    }
+
+                    val daysList = listOf("SAT", "SUN", "MON", "TUE", "WED", "THR", "FRI")
+                    val classMapMutable = mutableMapOf<Int, MutableList<ClassModel>>()
+
+                    for (doc in querySnapshot.documents) {
+                        val dayStr = doc.getString("day") ?: continue
+                        val courseCode = doc.getString("courseCode") ?: doc.getString("subject") ?: continue
+                        val faculty = doc.getString("faculty") ?: doc.getString("teacher") ?: "TBA"
+                        val roomStr = doc.getString("room") ?: "TBA"
+                        val timeSlot = doc.getString("timeSlot") ?: "08:15 AM - 09:45 AM"
+
+                        val dayIndex = daysList.indexOfFirst { it.equals(dayStr, ignoreCase = true) }
+                        if (dayIndex == -1) continue
+
+                        val courseDisplayName = if (faculty.isNotBlank() && faculty != "TBA" && !courseCode.contains("(")) {
+                            "$courseCode ($faculty)"
+                        } else {
+                            courseCode
+                        }
+
+                        val roomDisplayName = if (roomStr.startsWith("Room") || roomStr.startsWith("TBA")) roomStr else "Room $roomStr"
+
+                        val classItem = ClassModel(
+                            id = doc.id,
+                            timeSlot = timeSlot,
+                            courseName = courseDisplayName,
+                            room = roomDisplayName
+                        )
+
+                        classMapMutable.getOrPut(dayIndex) { mutableListOf() }.add(classItem)
+                    }
+
+                    if (classMapMutable.isNotEmpty()) {
+                        classMapMutable.values.forEach { list ->
+                            list.sortBy { startMinutes(it.timeSlot) }
+                        }
+
+                        val updatedDays = _uiState.value.scheduleDays.map { day ->
+                            val hasClasses = (classMapMutable[day.dayIndex]?.isNotEmpty() == true)
+                            day.copy(hasClasses = hasClasses)
+                        }
+
+                        _uiState.update { currentState ->
+                            currentState.copy(
+                                classMap = classMapMutable,
+                                scheduleDays = updatedDays
+                            )
+                        }
+                    }
+                }
+        } catch (e: Exception) {
+            Log.e("StudentPortalViewModel", "Error setting up Firestore routines", e)
+        }
+    }
+
+    fun selectTab(tabIndex: Int) {
+        _uiState.update { it.copy(selectedTab = tabIndex) }
+    }
+
+    fun selectScheduleDay(dayIndex: Int) {
+        _uiState.update { it.copy(selectedDayIndex = dayIndex) }
+    }
+
+    fun navigateWeek(delta: Int) {
+        val newOffset = _uiState.value.currentWeekOffset + delta
+        val weekData = calculateCurrentWeekDays(newOffset)
+        _uiState.update { currentState ->
+            currentState.copy(
+                currentWeekOffset = newOffset,
+                weekLabel = weekData.first,
+                scheduleDays = weekData.second.map { day ->
+                    day.copy(hasClasses = currentState.classMap[day.dayIndex]?.isNotEmpty() == true)
+                }
+            )
+        }
+    }
+
+    fun toggleAttendance(classId: String, targetState: String, dayIndex: Int, context: Context? = null) {
+        val currentState = _uiState.value
+        val targetClass = currentState.classMap[dayIndex]?.find { it.id == classId }
+        val timingStatus = targetClass?.let { getClassTimingStatus(dayIndex, it.timeSlot) } ?: ClassTimingStatus.PAST
+
+        if (timingStatus != ClassTimingStatus.LIVE_NOW) {
+            if (context != null) {
+                val timeRange = targetClass?.timeSlot ?: "class time"
+                ToastHelper.showWarning(
+                    context,
+                    "Attendance Locked",
+                    "Attendance can only be marked during class time ($timeRange)."
+                )
+            }
+            return
+        }
+
+        var updatedCourseName: String? = null
+        var finalState: String? = null
+
+        _uiState.update { state ->
+            val updatedMap = state.classMap.mapValues { (dIdx, classes) ->
+                if (dIdx == dayIndex) {
+                    classes.map { item ->
+                        if (item.id == classId) {
+                            val newState = if (item.attendanceState == targetState) null else targetState
+                            finalState = newState
+                            updatedCourseName = item.courseName
+                            item.copy(attendanceState = newState)
+                        } else item
+                    }
+                } else classes
+            }
+            state.copy(classMap = updatedMap)
+        }
+
+        if (context != null) {
+            val repo = RoutineRepository(context)
+            repo.saveWeeklyAttendanceState(classId, finalState)
+
+            val courseDisplay = updatedCourseName?.takeIf { it.isNotBlank() } ?: "class"
+            val cleanCourse = courseDisplay.split("(").firstOrNull()?.trim() ?: courseDisplay
+
+            when (finalState) {
+                "attended" -> {
+                    ToastHelper.showSuccess(
+                        context,
+                        "Attendance Recorded",
+                        "Class marked as attended for $cleanCourse."
+                    )
+                }
+                "missed" -> {
+                    ToastHelper.showWarning(
+                        context,
+                        "Class Missed",
+                        "Class marked as missed for $cleanCourse."
+                    )
+                }
+                else -> {
+                    ToastHelper.showInfo(
+                        context,
+                        "Attendance Cleared",
+                        "Attendance mark cleared for $cleanCourse."
+                    )
+                }
+            }
+        }
+    }
+
+    fun castVote(candidateId: String) {
+        if (_uiState.value.hasVoted) return
+        if (!_uiState.value.isGateOpen) {
+            showToast("Voting gate is currently closed")
+            return
+        }
+
+        // Write vote to Firebase Realtime Database
+        val secCandRef = dbRef?.child("voting_controls")?.child(sanitizedDept)?.child(sanitizedSec)?.child("candidates")?.child(candidateId)?.child("votes")
+        val rootCandRef = dbRef?.child("candidates")?.child(candidateId)?.child("votes")
+        val voterRef = dbRef?.child("voting_controls")?.child(sanitizedDept)?.child(sanitizedSec)?.child("voters")?.child(sanitizedStudentId)
+
+        secCandRef?.runTransaction(object : Transaction.Handler {
+            override fun doTransaction(mutableData: MutableData): Transaction.Result {
+                val currentVotes = mutableData.getValue(Int::class.java) ?: 0
+                mutableData.value = currentVotes + 1
+                return Transaction.success(mutableData)
+            }
+
+            override fun onComplete(error: DatabaseError?, committed: Boolean, snapshot: DataSnapshot?) {}
+        })
+
+        rootCandRef?.runTransaction(object : Transaction.Handler {
+            override fun doTransaction(mutableData: MutableData): Transaction.Result {
+                val currentVotes = mutableData.getValue(Int::class.java) ?: 0
+                mutableData.value = currentVotes + 1
+                return Transaction.success(mutableData)
+            }
+
+            override fun onComplete(error: DatabaseError?, committed: Boolean, snapshot: DataSnapshot?) {}
+        })
+
+        val voterData = mapOf(
+            "timestamp" to System.currentTimeMillis(),
+            "candidateId" to candidateId,
+            "voted" to true
+        )
+        voterRef?.setValue(voterData)
+
+        _uiState.update { currentState ->
+            val updatedCandidates = currentState.candidates.map { candidate ->
+                if (candidate.id == candidateId) candidate.copy(votes = candidate.votes + 1)
+                else candidate
+            }
+
+            currentState.copy(
+                hasVoted = true,
+                votedCandidateId = candidateId,
+                candidates = updatedCandidates,
+                snackbarMessage = "Vote recorded successfully"
+            )
+        }
+    }
+
+    fun openAddClassSheet(manualMode: Boolean = true) {
+        _uiState.update { it.copy(isAddClassSheetOpen = true, isAddClassManualMode = manualMode) }
+    }
+
+    fun closeAddClassSheet() {
+        _uiState.update { it.copy(isAddClassSheetOpen = false) }
+    }
+
+    fun openNoticeSheet() {
+        _uiState.update { it.copy(isNoticeSheetOpen = true) }
+    }
+
+    fun closeNoticeSheet() {
+        _uiState.update { it.copy(isNoticeSheetOpen = false) }
+    }
+
+    fun publishNotice(title: String, body: String) {
+        if (title.isBlank() || body.isBlank()) {
+            _uiState.update { it.copy(snackbarMessage = "Please enter notice title and text") }
+            return
+        }
+        val notifRef = dbRef?.child("voting_controls")?.child(sanitizedDept)?.child(sanitizedSec)?.child("announcements")
+        val newNoticeRef = notifRef?.push()
+        val noticeMap = mapOf(
+            "title" to title.trim(),
+            "body" to body.trim(),
+            "timestamp" to System.currentTimeMillis(),
+            "postedBy" to (_uiState.value.profile.name + " (CR)")
+        )
+        newNoticeRef?.setValue(noticeMap)?.addOnSuccessListener {
+            _uiState.update { 
+                it.copy(
+                    isNoticeSheetOpen = false,
+                    snackbarMessage = "Notice broadcasted to Section $sanitizedSec!"
+                )
+            }
+        }?.addOnFailureListener { e ->
+            _uiState.update { 
+                it.copy(snackbarMessage = "Failed to post notice: ${e.message}")
+            }
+        }
+    }
+
+    fun addClass(courseName: String, timeSlot: String, room: String) {
+        _uiState.update { currentState ->
+            val currentDayIndex = currentState.selectedDayIndex
+            val currentClasses = currentState.classMap[currentDayIndex] ?: emptyList()
+            val newClass = ClassModel(
+                id = System.currentTimeMillis().toString(),
+                timeSlot = timeSlot.ifBlank { "09:00 - 10:30" },
+                courseName = courseName,
+                room = room.ifBlank { "Room TBA" }
+            )
+            val updatedClassList = (currentClasses + newClass).sortedBy { startMinutes(it.timeSlot) }
+            val updatedClassMap = currentState.classMap.toMutableMap().apply {
+                put(currentDayIndex, updatedClassList)
+            }
+
+            val updatedDays = currentState.scheduleDays.map { day ->
+                if (day.dayIndex == currentDayIndex) day.copy(hasClasses = true)
+                else day
+            }
+
+            currentState.copy(
+                classMap = updatedClassMap,
+                scheduleDays = updatedDays,
+                isAddClassSheetOpen = false,
+                snackbarMessage = "Class added"
+            )
+        }
+    }
+
+    fun saveScannedEntries(entries: List<ClassEntry>, context: Context? = null) {
+        val ctx = context ?: FirebaseDatabase.getInstance().app.applicationContext
+        val sortedEntries = entries.sortedBy { startMinutes(it.startTime) }
+        val repo = RoutineRepository(ctx)
+        // Overwrite saved routine entries permanently with newly scanned entries
+        repo.replaceClassEntries(sortedEntries)
+
+        val daysList = listOf("SAT", "SUN", "MON", "TUE", "WED", "THR", "FRI")
+        val updatedMap = mutableMapOf<Int, MutableList<ClassModel>>()
+
+        for (entry in sortedEntries) {
+            val dayIdx = daysList.indexOfFirst { it.equals(entry.day, ignoreCase = true) }
+            val targetIdx = if (dayIdx != -1) dayIdx else getTodayDayIndex()
+            val timeSlot = "${entry.startTime} - ${entry.endTime}"
+            val courseDisplay = if (entry.faculty.isNotBlank() && entry.faculty != "TBA" && !entry.course.contains("(")) {
+                "${entry.course} (${entry.faculty})"
+            } else {
+                entry.course
+            }
+            val roomDisplay = if (entry.room.startsWith("Room") || entry.room.startsWith("TBA")) entry.room else "Room ${entry.room}"
+
+            val classModel = ClassModel(
+                id = "${entry.day}_${entry.course}_${entry.startTime}",
+                timeSlot = timeSlot,
+                courseName = courseDisplay,
+                room = roomDisplay
+            )
+            val currentList = updatedMap.getOrPut(targetIdx) { mutableListOf() }
+            if (!currentList.any { it.courseName == classModel.courseName && it.timeSlot == classModel.timeSlot }) {
+                currentList.add(classModel)
+            }
+        }
+
+        updatedMap.values.forEach { list ->
+            list.sortBy { startMinutes(it.timeSlot) }
+        }
+
+        val todayIdx = getTodayDayIndex()
+
+        val updatedDays = _uiState.value.scheduleDays.map { day ->
+            val hasClasses = (updatedMap[day.dayIndex]?.isNotEmpty() == true)
+            day.copy(hasClasses = hasClasses)
+        }
+
+        _uiState.update { currentState ->
+            currentState.copy(
+                classMap = updatedMap,
+                scheduleDays = updatedDays,
+                selectedDayIndex = todayIdx, // Automatically display today's routine after scanning
+                isAddClassSheetOpen = false,
+                snackbarMessage = "Scanned routine processed (${entries.size} classes saved)"
+            )
+        }
+
+        // Sync to Firestore under routines/{dept}/{intake}/{section}/schedule
+        saveScannedClassesToFirestore(entries, ctx)
+    }
+
+    fun loadSampleRoutine(context: Context? = null) {
+        val ctx = context ?: FirebaseDatabase.getInstance().app.applicationContext
+        val repo = RoutineRepository(ctx)
+        val sampleEntries = repo.getDefaultSampleEntries()
+        if (sampleEntries.isNotEmpty()) {
+            saveScannedEntries(sampleEntries, ctx)
+            _uiState.update { currentState ->
+                currentState.copy(
+                    snackbarMessage = "Loaded sample BUBT routine (${sampleEntries.size} classes)"
+                )
+            }
+        }
+    }
+
+    fun deleteCurrentRoutine(context: Context? = null) {
+        val ctx = context ?: FirebaseDatabase.getInstance().app.applicationContext
+
+        // 1. Clear local SharedPreferences repositories
+        val repo = RoutineRepository(ctx)
+        repo.clearEntries()
+        RoutineLocalCache.clearRoutineLocally(ctx)
+
+        // 2. Clear Firestore schedule for this dept/intake/section
+        try {
+            val db = FirebaseFirestore.getInstance()
+            val session = SessionManager(ctx)
+            val deptKey = getSanitizedKey(session.userDept.ifBlank { rawDept })
+            val intakeKey = getSanitizedKey(session.userIntake.ifBlank { rawIntake })
+            val secKey = getSanitizedKey(session.userSection.ifBlank { rawSec })
+
+            val scheduleRef = db.collection("routines")
+                .document(deptKey)
+                .collection(intakeKey)
+                .document(secKey)
+                .collection("schedule")
+
+            scheduleRef.get().addOnSuccessListener { snapshot ->
+                val batch = db.batch()
+                for (doc in snapshot.documents) {
+                    batch.delete(doc.reference)
+                }
+                batch.commit().addOnFailureListener { e ->
+                    Log.e("StudentPortalViewModel", "Error deleting routine docs from Firestore", e)
+                }
+            }.addOnFailureListener { e ->
+                Log.e("StudentPortalViewModel", "Error fetching routine docs for deletion", e)
+            }
+        } catch (e: Exception) {
+            Log.e("StudentPortalViewModel", "Error in deleteCurrentRoutine", e)
+        }
+
+        // 3. Reset UI state schedule days & classMap immediately
+        val updatedDays = _uiState.value.scheduleDays.map { day ->
+            day.copy(hasClasses = false)
+        }
+
+        _uiState.update { currentState ->
+            currentState.copy(
+                classMap = emptyMap(),
+                scheduleDays = updatedDays,
+                isAddClassSheetOpen = false,
+                snackbarMessage = "Current routine deleted"
+            )
+        }
+    }
+
+    private fun saveScannedClassesToFirestore(entries: List<ClassEntry>, context: Context) {
+        try {
+            val db = FirebaseFirestore.getInstance()
+            val session = SessionManager(context)
+            val deptKey = getSanitizedKey(session.userDept.ifBlank { rawDept })
+            val intakeKey = getSanitizedKey(session.userIntake.ifBlank { rawIntake })
+            val secKey = getSanitizedKey(session.userSection.ifBlank { rawSec })
+            val uid = FirebaseAuth.getInstance().currentUser?.uid ?: session.userID
+
+            val sortedEntries = entries.sortedBy { startMinutes(it.startTime) }
+
+            // 1. Sync to section schedule routines/{dept}/{intake}/{section}/schedule
+            val scheduleRef = db.collection("routines")
+                .document(deptKey)
+                .collection(intakeKey)
+                .document(secKey)
+                .collection("schedule")
+
+            scheduleRef.get().addOnSuccessListener { snapshot ->
+                val batch = db.batch()
+                for (doc in snapshot.documents) {
+                    batch.delete(doc.reference)
+                }
+                for (entry in sortedEntries) {
+                    val newDocRef = scheduleRef.document()
+                    val docData = hashMapOf(
+                        "courseCode" to entry.course,
+                        "subject" to entry.course,
+                        "faculty" to entry.faculty,
+                        "teacher" to entry.faculty,
+                        "timeSlot" to "${entry.startTime} - ${entry.endTime}",
+                        "room" to entry.room,
+                        "day" to entry.day,
+                        "startTime" to entry.startTime,
+                        "endTime" to entry.endTime
+                    )
+                    batch.set(newDocRef, docData)
+                }
+                batch.commit().addOnFailureListener { e ->
+                    Log.e("StudentPortalViewModel", "Error batch saving scanned classes to Firestore", e)
+                }
+            }.addOnFailureListener { e ->
+                Log.e("StudentPortalViewModel", "Error getting schedule docs for cleanup", e)
+            }
+
+            // 2. Personal backup to users/{uid}/routine so user's routine reloads automatically on login
+            if (uid.isNotBlank()) {
+                val userRoutineRef = db.collection("users").document(uid).collection("routine")
+                userRoutineRef.get().addOnSuccessListener { userSnapshot ->
+                    val userBatch = db.batch()
+                    for (doc in userSnapshot.documents) {
+                        userBatch.delete(doc.reference)
+                    }
+                    for (entry in sortedEntries) {
+                        val newDocRef = userRoutineRef.document()
+                        val docData = hashMapOf(
+                            "courseCode" to entry.course,
+                            "subject" to entry.course,
+                            "faculty" to entry.faculty,
+                            "room" to entry.room,
+                            "day" to entry.day,
+                            "startTime" to entry.startTime,
+                            "endTime" to entry.endTime
+                        )
+                        userBatch.set(newDocRef, docData)
+                    }
+                    userBatch.commit().addOnFailureListener { e ->
+                        Log.e("StudentPortalViewModel", "Error saving user personal routine to Firestore", e)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("StudentPortalViewModel", "Error in saveScannedClassesToFirestore", e)
+        }
+    }
+
+    private fun getSanitizedKey(key: String): String {
+        if (key.isBlank()) return "default"
+        return key.trim().lowercase(Locale.ROOT)
+            .replace(Regex("[^a-z0-9_]"), "_")
+            .replace(Regex("_+"), "_")
+    }
+
+    fun setThemeMode(context: Context, mode: String) {
+        val session = SessionManager(context)
+        session.setStudentThemeMode(mode)
+        _uiState.update { it.copy(themeMode = mode) }
+    }
+
+    fun updateCgpa(newCgpa: String, context: Context) {
+        val session = SessionManager(context)
+        session.setStudentCgpa(newCgpa)
+
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        val dbRef = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com").getReference("crconnect_db")
+        if (uid != null) {
+            dbRef.child("users").child(uid).child("cgpa").setValue(newCgpa)
+        }
+        if (sanitizedStudentId.isNotBlank()) {
+            dbRef.child("users").child(sanitizedStudentId).child("cgpa").setValue(newCgpa)
+        }
+
+        val firestore = FirebaseFirestore.getInstance()
+        if (uid != null) {
+            firestore.collection("users").document(uid).update("cgpa", newCgpa)
+        }
+        if (sanitizedStudentId.isNotBlank()) {
+            firestore.collection("users").document(sanitizedStudentId).update("cgpa", newCgpa)
+        }
+
+        _uiState.update { currentState ->
+            currentState.copy(
+                profile = currentState.profile.copy(cgpa = newCgpa)
+            )
+        }
+        showToast("CGPA updated successfully")
+    }
+
+    fun updateAdvisorInfo(advisorName: String, advisorEmail: String, context: Context) {
+        if (!_uiState.value.profile.isCr) {
+            showToast("Only Class Representatives (CR) can update academic advisor")
+            return
+        }
+        val session = SessionManager(context)
+        session.setAdvisorName(advisorName)
+        session.setAdvisorEmail(advisorEmail)
+
+        _uiState.update { currentState ->
+            currentState.copy(
+                profile = currentState.profile.copy(
+                    advisorName = advisorName,
+                    advisorEmail = advisorEmail
+                )
+            )
+        }
+
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        val dbRef = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com").getReference("crconnect_db")
+        if (uid != null) {
+            dbRef.child("users").child(uid).child("advisorName").setValue(advisorName)
+            dbRef.child("users").child(uid).child("advisorEmail").setValue(advisorEmail)
+        }
+        if (sanitizedStudentId.isNotBlank()) {
+            dbRef.child("users").child(sanitizedStudentId).child("advisorName").setValue(advisorName)
+            dbRef.child("users").child(sanitizedStudentId).child("advisorEmail").setValue(advisorEmail)
+        }
+
+        val firestore = FirebaseFirestore.getInstance()
+        if (uid != null) {
+            firestore.collection("users").document(uid).update(
+                mapOf(
+                    "advisorName" to advisorName,
+                    "advisorEmail" to advisorEmail
+                )
+            )
+        }
+        if (sanitizedStudentId.isNotBlank()) {
+            firestore.collection("users").document(sanitizedStudentId).update(
+                mapOf(
+                    "advisorName" to advisorName,
+                    "advisorEmail" to advisorEmail
+                )
+            )
+        }
+
+        showToast("Academic advisor updated successfully")
+    }
+
+    fun updateCurrentTerm(newTerm: String, context: Context) {
+        val session = SessionManager(context)
+        session.setCurrentTerm(newTerm)
+
+        _uiState.update { currentState ->
+            currentState.copy(
+                profile = currentState.profile.copy(
+                    currentTerm = newTerm
+                )
+            )
+        }
+
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        val dbRef = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com").getReference("crconnect_db")
+        if (uid != null) {
+            dbRef.child("users").child(uid).child("currentTerm").setValue(newTerm)
+        }
+        if (sanitizedStudentId.isNotBlank()) {
+            dbRef.child("users").child(sanitizedStudentId).child("currentTerm").setValue(newTerm)
+        }
+
+        val firestore = FirebaseFirestore.getInstance()
+        if (uid != null) {
+            firestore.collection("users").document(uid).update("currentTerm", newTerm)
+        }
+        if (sanitizedStudentId.isNotBlank()) {
+            firestore.collection("users").document(sanitizedStudentId).update("currentTerm", newTerm)
+        }
+
+        showToast("Current term updated successfully")
+    }
+
+    fun updateProfileImage(uri: Uri, context: Context) {
+        try {
+            val file = if (uri.scheme == "file" && uri.path != null) {
+                File(uri.path!!)
+            } else {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val targetFile = File(context.filesDir, "profile_pic_${System.currentTimeMillis()}.jpg")
+                val outputStream = FileOutputStream(targetFile)
+                inputStream?.use { input ->
+                    outputStream.use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                targetFile
+            }
+
+            val absolutePath = file.absolutePath
+            val session = SessionManager(context)
+            session.setProfileImageUrl(absolutePath)
+
+            // Sync with local cache manager
+            ProfileImageCacheHelper.saveAndCacheProfileImage(context, absolutePath, session.userID.ifBlank { session.userEmail }) {}
+
+            val uid = FirebaseAuth.getInstance().currentUser?.uid
+            val dbRef = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com").getReference("crconnect_db")
+            if (uid != null) {
+                dbRef.child("users").child(uid).child("profileImageUrl").setValue(absolutePath)
+            }
+            if (sanitizedStudentId.isNotBlank()) {
+                dbRef.child("users").child(sanitizedStudentId).child("profileImageUrl").setValue(absolutePath)
+            }
+
+            val firestore = FirebaseFirestore.getInstance()
+            if (uid != null) {
+                firestore.collection("users").document(uid).update("profileImageUrl", absolutePath)
+            }
+            if (sanitizedStudentId.isNotBlank()) {
+                firestore.collection("users").document(sanitizedStudentId).update("profileImageUrl", absolutePath)
+            }
+
+            _uiState.update { currentState ->
+                currentState.copy(
+                    profile = currentState.profile.copy(profileImageUrl = absolutePath)
+                )
+            }
+            showToast("Profile picture updated successfully")
+        } catch (e: Exception) {
+            showToast("Failed to update profile picture")
+        }
+    }
+
+    fun updateSection(newSection: String, context: Context) {
+        val session = SessionManager(context)
+        session.setUserSection(newSection)
+
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        val dbRef = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com").getReference("crconnect_db")
+        if (uid != null) {
+            dbRef.child("users").child(uid).child("section").setValue(newSection)
+        }
+        if (sanitizedStudentId.isNotBlank()) {
+            dbRef.child("users").child(sanitizedStudentId).child("section").setValue(newSection)
+        }
+
+        val firestore = FirebaseFirestore.getInstance()
+        if (uid != null) {
+            firestore.collection("users").document(uid).update("section", newSection)
+        }
+        if (sanitizedStudentId.isNotBlank()) {
+            firestore.collection("users").document(sanitizedStudentId).update("section", newSection)
+        }
+
+        _uiState.update { currentState ->
+            currentState.copy(
+                profile = currentState.profile.copy(section = newSection)
+            )
+        }
+        showToast("Section updated successfully to $newSection")
+    }
+
+    fun clearSnackbar() {
+        _uiState.update { it.copy(snackbarMessage = null) }
+    }
+
+    fun showToast(message: String) {
+        _uiState.update { it.copy(snackbarMessage = message) }
+    }
+
+    private var lastUpdateCheckTime: Long = 0L
+
+    fun checkForAppUpdates(context: Context, forceCheck: Boolean = false) {
+        val currentTime = System.currentTimeMillis()
+        if (!forceCheck && (currentTime - lastUpdateCheckTime) < 60 * 60 * 1000L) {
+            return
+        }
+
+        if (forceCheck) {
+            showToast("Checking for updates...")
+        }
+
+        lastUpdateCheckTime = currentTime
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val url = URL("https://api.github.com/repos/shaddhow/CRConnect-App/releases/latest")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 8000
+                conn.readTimeout = 8000
+                conn.setRequestProperty("User-Agent", "CRConnect-AndroidApp")
+                conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
+
+                if (conn.responseCode == HttpURLConnection.HTTP_OK) {
+                    val responseText = conn.inputStream.bufferedReader().use { it.readText() }
+                    val json = JSONObject(responseText)
+                    val tagName = json.optString("tag_name", "").trim()
+                    val htmlUrl = json.optString("html_url", "https://github.com/shaddhow/CRConnect-App/releases/latest")
+
+                    val cleanTag = tagName.removePrefix("v").removePrefix("V")
+                    val currentVersion = "1.1.0"
+
+                    val isNewer = isVersionNewer(cleanTag, currentVersion)
+
+                    withContext(Dispatchers.Main) {
+                        _uiState.update { currentState ->
+                            currentState.copy(
+                                isUpdateAvailable = isNewer,
+                                latestVersionName = if (tagName.isNotBlank()) tagName else "v$cleanTag",
+                                updateUrl = if (htmlUrl.isNotBlank()) htmlUrl else "https://github.com/shaddhow/CRConnect-App/releases/latest",
+                                isCheckingUpdate = false
+                            )
+                        }
+
+                        if (forceCheck) {
+                            if (isNewer) {
+                                showToast("New update available: $tagName! Tap App Version to update.")
+                            } else {
+                                showToast("CRConnect is up to date (v$currentVersion)")
+                            }
+                        }
+                    }
+                } else {
+                    if (forceCheck) {
+                        withContext(Dispatchers.Main) {
+                            showToast("Could not check for updates. Try again later.")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("StudentPortalViewModel", "Update check failed", e)
+                if (forceCheck) {
+                    withContext(Dispatchers.Main) {
+                        showToast("Unable to connect to GitHub releases.")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun isVersionNewer(latest: String, current: String): Boolean {
+        if (latest.isBlank()) return false
+        val latestParts = latest.split(".").mapNotNull { it.toIntOrNull() }
+        val currentParts = current.split(".").mapNotNull { it.toIntOrNull() }
+
+        val maxLength = Math.max(latestParts.size, currentParts.size)
+        for (i in 0 until maxLength) {
+            val l = latestParts.getOrElse(i) { 0 }
+            val c = currentParts.getOrElse(i) { 0 }
+            if (l > c) return true
+            if (l < c) return false
+        }
+        return false
+    }
+
+    fun sendPasswordResetEmail(context: Context) {
+        val email = _uiState.value.profile.email
+        if (email.isBlank()) {
+            showToast("No email associated with profile")
+            return
+        }
+        FirebaseAuth.getInstance().sendPasswordResetEmail(email)
+            .addOnSuccessListener {
+                showToast("Password reset email sent to $email")
+            }
+            .addOnFailureListener { e ->
+                showToast("Failed to send reset email: ${e.localizedMessage}")
+            }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopTimerLoop()
+        candidatesListener?.let { dbRef?.removeEventListener(it) }
+        gateControlListener?.let { dbRef?.removeEventListener(it) }
+        voterListener?.let { dbRef?.removeEventListener(it) }
+        announcementsListener?.let { dbRef?.removeEventListener(it) }
+        firestoreRegistration?.remove()
+    }
+}

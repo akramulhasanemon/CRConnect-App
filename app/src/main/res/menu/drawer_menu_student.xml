@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <group android:checkableBehavior="single">
+        <item
+            android:id="@+id/drawer_student_candidates"
+            android:icon="@drawable/ic_user"
+            android:title="Candidates" />
+        <item
+            android:id="@+id/drawer_student_routine"
+            android:icon="@drawable/ic_calendar"
+            android:title="Class Routine" />
+        <item
+            android:id="@+id/drawer_student_status"
+            android:icon="@drawable/ic_nav_timer"
+            android:title="Vote Status" />
+        <item
+            android:id="@+id/drawer_student_profile"
+            android:icon="@drawable/ic_nav_profile"
+            android:title="My Profile" />
+    </group>
+    <item android:title="">
+        <menu>
+            <item
+                android:id="@+id/drawer_student_logout"
+                android:icon="@drawable/ic_power"
+                android:title="Logout Account" />
+        </menu>
+    </item>
+</menu>

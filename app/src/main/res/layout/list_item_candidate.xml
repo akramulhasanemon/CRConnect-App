@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/cardCandidateItem"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="12dp"
+    android:hapticFeedbackEnabled="true"
+    app:cardBackgroundColor="@color/card_bg"
+    app:cardCornerRadius="20dp"
+    app:cardElevation="2dp"
+    app:strokeColor="@color/slate_border_light"
+    app:strokeWidth="1dp"
+    android:outlineAmbientShadowColor="#14000000"
+    android:outlineSpotShadowColor="#14000000"
+    tools:ignore="UnusedAttribute">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/layoutCandidateCardContent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="20dp">
+
+        <!-- Left: Serial Number Badge -->
+        <TextView
+            android:id="@+id/tvCandidateRank"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/bg_icon_square_blue"
+            android:gravity="center"
+            android:text="01"
+            android:textColor="#0066FF"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:ignore="HardcodedText" />
+
+        <!-- Center: Candidate Name -->
+        <TextView
+            android:id="@+id/tvCandidateName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:text="Candidate Name"
+            android:textColor="@color/title_text"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toStartOf="@id/btnVoteCandidate"
+            app:layout_constraintStart_toEndOf="@id/tvCandidateRank"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:ignore="HardcodedText" />
+
+        <!-- Center Subline -->
+        <TextView
+            android:id="@+id/tvCandidateSubline"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginTop="2dp"
+            android:layout_marginEnd="12dp"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:text="0 votes · Dept. of CSE"
+            android:textColor="@color/muted_text"
+            android:textSize="12sp"
+            app:layout_constraintEnd_toStartOf="@id/btnVoteCandidate"
+            app:layout_constraintStart_toEndOf="@id/tvCandidateRank"
+            app:layout_constraintTop_toBottomOf="@id/tvCandidateName"
+            tools:ignore="HardcodedText" />
+
+        <!-- Percentage -->
+        <TextView
+            android:id="@+id/tvCandidatePct"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0%"
+            android:textColor="@color/title_text"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:ignore="HardcodedText" />
+
+        <!-- Votes Badge -->
+        <TextView
+            android:id="@+id/tvCandidateVotes"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0 Votes"
+            android:textColor="@color/muted_text"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            app:layout_constraintStart_toEndOf="@id/tvCandidateRank"
+            app:layout_constraintTop_toBottomOf="@id/tvCandidateName"
+            tools:ignore="HardcodedText" />
+
+        <!-- Department Badge -->
+        <TextView
+            android:id="@+id/tvCandidateDept"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            app:layout_constraintStart_toEndOf="@id/tvCandidateVotes"
+            app:layout_constraintTop_toBottomOf="@id/tvCandidateName"
+            tools:ignore="HardcodedText" />
+
+        <!-- Right: Vote Action Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnVoteCandidate"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:minWidth="84dp"
+            android:hapticFeedbackEnabled="true"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:paddingHorizontal="14dp"
+            android:text="Vote"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            app:backgroundTint="@color/primary"
+            app:cornerRadius="12dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="@id/tvCandidateSubline"
+            tools:ignore="HardcodedText" />
+
+        <!-- Delete Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDeleteCandidate"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:ignore="HardcodedText" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnTestVoteCandidate"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/pbCandidateVotes"
+            tools:ignore="HardcodedText" />
+
+        <!-- Bottom: Vote Progress Bar -->
+        <ProgressBar
+            android:id="@+id/pbCandidateVotes"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="0dp"
+            android:layout_height="6dp"
+            android:layout_marginTop="16dp"
+            android:backgroundTint="@color/slate_border_light"
+            android:max="100"
+            android:progress="0"
+            android:progressTint="@color/primary"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tvCandidateSubline" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</com.google.android.material.card.MaterialCardView>

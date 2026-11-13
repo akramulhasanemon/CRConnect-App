@@ -1,0 +1,1038 @@
+package com.example.crconnect;
+
+import android.content.Context;
+import android.content.Intent;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
+import android.graphics.Rect;
+import android.graphics.Typeface;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.provider.Settings;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.util.Log;
+import android.util.Patterns;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.animation.AnimationUtils;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageButton;
+import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
+import android.widget.Spinner;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.activity.OnBackPressedCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.IntentSenderRequest;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatDelegate;
+import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.annotation.NonNull;
+import androidx.core.widget.NestedScrollView;
+
+import com.example.crconnect.core.utils.HapticUtils;
+import com.example.crconnect.core.utils.KeyboardUtils;
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.tasks.Task;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.snackbar.Snackbar;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
+import com.google.firebase.auth.AuthCredential;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException;
+import com.google.firebase.auth.FirebaseAuthUserCollisionException;
+import com.google.firebase.auth.FirebaseAuthWeakPasswordException;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.auth.GoogleAuthProvider;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.mlkit.vision.common.InputImage;
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanner;
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions;
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning;
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult;
+import com.google.mlkit.vision.text.TextRecognition;
+import com.google.mlkit.vision.text.TextRecognizer;
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class RegisterActivity extends AppCompatActivity {
+
+    private TextInputEditText etFullName, etRegEmail, etStudentId, etTeacherCode, etRegPassword, etIntake;
+    private TextInputLayout tilRegEmail, tilStudentId, tilTeacherCode;
+    private RadioGroup radioGroupRole;
+    private View layoutStudentFields, layoutTeacherFields;
+    private RadioButton rbTeacher, rbStudent;
+    private Spinner spinnerStudentSection, spinnerDept, spinnerTeacherDept;
+    private Button btnRegister, btnSuccessBackToLogin, btnResendVerificationEmail;
+    private MaterialButton btnGoogleRegister;
+    private ImageButton btnBackToLogin;
+    private MaterialButton btnScanIdCard;
+    private View btnScanIdCardContainer;
+    private CheckBox cbTerms;
+    private TextView tvLoginLink;
+    private MaterialCardView layoutFormCard, layoutSuccessCard;
+    private View meterBar1, meterBar2, meterBar3, meterBar4;
+    private LinearLayout layoutStickyFooter;
+
+    private FirebaseUser lastCreatedUser;
+    private GoogleSignInClient googleSignInClient;
+    private GoogleSignInAccount googleAccount;
+    private ActivityResultLauncher<Intent> googleSignInLauncher;
+
+    private ActivityResultLauncher<IntentSenderRequest> docScannerLauncher;
+    private GmsDocumentScanner documentScanner;
+
+    private static final String[] SECTIONS = {
+        "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"
+    };
+
+    private static final String[] DEPARTMENTS = {
+        "Computer Science & Engineering (CSE)",
+        "Bachelor of Business Administration (BBA)",
+        "Electrical & Electronic Engineering (EEE)",
+        "English (ENG)",
+        "Law & Justice (L&J)",
+        "Accounting (ACC)",
+        "Finance (FIN)",
+        "Management (MGT)",
+        "Marketing (MKT)",
+        "Civil Engineering (CE)",
+        "Textile Engineering (TE)",
+        "Mathematics & Statistics (M&S)",
+        "Economics (ECO)",
+        "Data Science & Engineering (DSE)"
+    };
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        SessionManager sessionManager = new SessionManager(this);
+        SessionManager.applyThemeMode(sessionManager.getThemeMode());
+        super.onCreate(savedInstanceState);
+
+        // --- STRICT EDGE-TO-EDGE FULL SCREEN WITH LIGHT BACKGROUND STATUS BARS ---
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getWindow().setNavigationBarContrastEnforced(false);
+        }
+        WindowInsetsControllerCompat insetsController = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        if (insetsController != null) {
+            insetsController.setAppearanceLightStatusBars(true);
+            insetsController.setAppearanceLightNavigationBars(true);
+        }
+        getWindow().setBackgroundDrawable(ContextCompat.getDrawable(this, R.drawable.bg_gradient));
+
+        setContentView(R.layout.activity_register);
+
+        // Binding UI elements
+        etFullName = findViewById(R.id.etFullName);
+        etRegEmail = findViewById(R.id.etRegEmail);
+        tilRegEmail = findViewById(R.id.tilRegEmail);
+        etStudentId = findViewById(R.id.etStudentId);
+        tilStudentId = findViewById(R.id.tilStudentId);
+        etTeacherCode = findViewById(R.id.etTeacherCode);
+        tilTeacherCode = findViewById(R.id.tilTeacherCode);
+
+        if (etStudentId != null) {
+            etStudentId.setFocusable(false);
+            etStudentId.setFocusableInTouchMode(false);
+            etStudentId.setOnClickListener(v -> {
+                CustomToast.show(RegisterActivity.this, "Please tap 'Scan BUBT ID card' above to set your Student ID.");
+                launchDocumentScanner();
+            });
+        }
+        if (tilStudentId != null) {
+            tilStudentId.setHelperText("Tap 'Scan BUBT ID card' above to verify Student ID");
+            tilStudentId.setHelperTextColor(ColorStateList.valueOf(Color.parseColor("#0284C7")));
+        }
+
+        if (etTeacherCode != null) {
+            etTeacherCode.setFocusable(false);
+            etTeacherCode.setFocusableInTouchMode(false);
+            etTeacherCode.setOnClickListener(v -> {
+                CustomToast.show(RegisterActivity.this, "Please tap 'Scan BUBT ID card' above to set your Teacher Code.");
+                launchDocumentScanner();
+            });
+        }
+        if (tilTeacherCode != null) {
+            tilTeacherCode.setHelperText("Tap 'Scan BUBT ID card' above to verify Teacher Code");
+            tilTeacherCode.setHelperTextColor(ColorStateList.valueOf(Color.parseColor("#0284C7")));
+        }
+        etRegPassword = findViewById(R.id.etRegPassword);
+        etIntake = findViewById(R.id.etIntake);
+        layoutStudentFields = findViewById(R.id.layoutStudentFields);
+        layoutTeacherFields = findViewById(R.id.layoutTeacherFields);
+        radioGroupRole = findViewById(R.id.radioGroupRole);
+        rbStudent = findViewById(R.id.rbStudent);
+        rbTeacher = findViewById(R.id.rbTeacher);
+        btnRegister = findViewById(R.id.btnRegister);
+        btnScanIdCard = findViewById(R.id.btnScanIdCard);
+        btnScanIdCardContainer = findViewById(R.id.btnScanIdCardContainer);
+        cbTerms = findViewById(R.id.cbTerms);
+        tvLoginLink = findViewById(R.id.tvLoginLink);
+        btnBackToLogin = findViewById(R.id.btnBackToLogin);
+        btnSuccessBackToLogin = findViewById(R.id.btnSuccessBackToLogin);
+        layoutFormCard = findViewById(R.id.layoutFormCard);
+        layoutSuccessCard = findViewById(R.id.layoutSuccessCard);
+        spinnerStudentSection = findViewById(R.id.spinnerStudentSection);
+        spinnerDept = findViewById(R.id.spinnerDept);
+        spinnerTeacherDept = findViewById(R.id.spinnerTeacherDept);
+        layoutStickyFooter = findViewById(R.id.layoutStickyFooter);
+        btnGoogleRegister = findViewById(R.id.btnGoogleRegister);
+
+        meterBar1 = findViewById(R.id.meterBar1);
+        meterBar2 = findViewById(R.id.meterBar2);
+        meterBar3 = findViewById(R.id.meterBar3);
+        meterBar4 = findViewById(R.id.meterBar4);
+
+        // Safe Area Padding & Sticky Footer Keyboard Adjustment
+        View scrollReg = findViewById(R.id.scrollViewRegister);
+        if (scrollReg instanceof NestedScrollView) {
+            KeyboardUtils.setupSmoothKeyboardHandling(this, (NestedScrollView) scrollReg, layoutStickyFooter);
+        }
+
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                finish();
+                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+            }
+        });
+
+        ArrayAdapter<String> sectionAdapter = new ArrayAdapter<>(this, R.layout.spinner_item, SECTIONS);
+        sectionAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item);
+        if (spinnerStudentSection != null) spinnerStudentSection.setAdapter(sectionAdapter);
+
+        ArrayAdapter<String> deptAdapter = new ArrayAdapter<>(this, R.layout.spinner_item, DEPARTMENTS);
+        deptAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item);
+        if (spinnerDept != null) spinnerDept.setAdapter(deptAdapter);
+        if (spinnerTeacherDept != null) spinnerTeacherDept.setAdapter(deptAdapter);
+
+        // Configure Google Play Services Document Scanner API
+        GmsDocumentScannerOptions scannerOptions = new GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(true)
+            .setPageLimit(1)
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG)
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+            .build();
+
+        documentScanner = GmsDocumentScanning.getClient(scannerOptions);
+
+        docScannerLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartIntentSenderForResult(),
+            result -> {
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    GmsDocumentScanningResult scanningResult =
+                        GmsDocumentScanningResult.fromActivityResultIntent(result.getData());
+                    if (scanningResult != null && scanningResult.getPages() != null && !scanningResult.getPages().isEmpty()) {
+                        GmsDocumentScanningResult.Page page = scanningResult.getPages().get(0);
+                        processScannedDocumentUri(page.getImageUri());
+                    }
+                }
+            }
+        );
+
+        if (btnScanIdCardContainer != null) {
+            btnScanIdCardContainer.setOnClickListener(v -> launchDocumentScanner());
+        } else if (btnScanIdCard != null) {
+            btnScanIdCard.setOnClickListener(v -> launchDocumentScanner());
+        }
+
+        if (btnBackToLogin != null) {
+            btnBackToLogin.setOnClickListener(v -> {
+                finish();
+                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+            });
+        }
+
+        btnResendVerificationEmail = findViewById(R.id.btnResendVerificationEmail);
+
+        if (btnSuccessBackToLogin != null) {
+            btnSuccessBackToLogin.setOnClickListener(v -> {
+                finish();
+                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+            });
+        }
+
+        if (btnResendVerificationEmail != null) {
+            btnResendVerificationEmail.setOnClickListener(v -> {
+                if (lastCreatedUser != null) {
+                    btnResendVerificationEmail.setEnabled(false);
+                    lastCreatedUser.sendEmailVerification()
+                        .addOnCompleteListener(task -> {
+                            btnResendVerificationEmail.setEnabled(true);
+                            if (task.isSuccessful()) {
+                                CustomToast.show(RegisterActivity.this, "Verification email resent to " + lastCreatedUser.getEmail() + "!");
+                            } else {
+                                CustomToast.show(RegisterActivity.this, "Failed to resend email: " + (task.getException() != null ? task.getException().getMessage() : "Unknown error"));
+                            }
+                        });
+                } else {
+                    CustomToast.show(RegisterActivity.this, "Verification email resent! Please check your inbox.");
+                }
+            });
+        }
+
+        GoogleSignInOptions.Builder gsoBuilder = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail();
+        try {
+            int resId = getResources().getIdentifier("default_web_client_id", "string", getPackageName());
+            if (resId != 0) {
+                gsoBuilder.requestIdToken(getString(resId));
+            }
+        } catch (Exception ignored) {}
+
+        googleSignInClient = GoogleSignIn.getClient(this, gsoBuilder.build());
+
+        googleSignInLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(result.getData());
+                    try {
+                        GoogleSignInAccount account = task.getResult(ApiException.class);
+                        if (account != null) {
+                            handleGoogleRegistrationSuccess(account);
+                        } else {
+                            CustomToast.show(RegisterActivity.this, "Google Sign-In failed.");
+                        }
+                    } catch (ApiException e) {
+                        Log.e("RegisterActivity", "Google Sign-In Exception", e);
+                        CustomToast.show(RegisterActivity.this, "Google Sign-In failed: " + e.getLocalizedMessage());
+                    }
+                }
+            }
+        );
+
+        if (btnGoogleRegister != null) {
+            btnGoogleRegister.setOnClickListener(v -> {
+                if (googleSignInClient != null) {
+                    googleSignInClient.signOut().addOnCompleteListener(task -> {
+                        Intent signInIntent = googleSignInClient.getSignInIntent();
+                        googleSignInLauncher.launch(signInIntent);
+                    });
+                }
+            });
+        }
+
+        // Role Toggle Reset & Dynamic Hint Setup
+        if (radioGroupRole != null) {
+            radioGroupRole.setOnCheckedChangeListener((group, checkedId) -> {
+                if (etFullName != null) {
+                    etFullName.setError(null);
+                }
+                if (etRegEmail != null) {
+                    etRegEmail.setError(null);
+                }
+                if (etStudentId != null) {
+                    etStudentId.setText("");
+                    etStudentId.setError(null);
+                    etStudentId.setFocusable(false);
+                    etStudentId.setFocusableInTouchMode(false);
+                }
+                if (tilStudentId != null) {
+                    tilStudentId.setHelperText("Tap 'Scan BUBT ID card' above to verify Student ID");
+                    tilStudentId.setHelperTextColor(ColorStateList.valueOf(Color.parseColor("#0284C7")));
+                }
+                if (etTeacherCode != null) {
+                    etTeacherCode.setText("");
+                    etTeacherCode.setError(null);
+                    etTeacherCode.setFocusable(false);
+                    etTeacherCode.setFocusableInTouchMode(false);
+                }
+                if (tilTeacherCode != null) {
+                    tilTeacherCode.setHelperText("Tap 'Scan BUBT ID card' above to verify Teacher Code");
+                    tilTeacherCode.setHelperTextColor(ColorStateList.valueOf(Color.parseColor("#0284C7")));
+                }
+                if (etRegPassword != null) {
+                    etRegPassword.setText("");
+                    etRegPassword.setError(null);
+                }
+                if (spinnerStudentSection != null) spinnerStudentSection.setSelection(0);
+                if (etIntake != null) {
+                    etIntake.setText("");
+                    etIntake.setError(null);
+                }
+                if (spinnerDept != null) spinnerDept.setSelection(0);
+                if (spinnerTeacherDept != null) spinnerTeacherDept.setSelection(0);
+
+                if (checkedId == R.id.rbTeacher) {
+                    if (layoutStudentFields != null) layoutStudentFields.setVisibility(View.GONE);
+                    if (layoutTeacherFields != null) layoutTeacherFields.setVisibility(View.VISIBLE);
+                    if (tilRegEmail != null) {
+                        tilRegEmail.setHint(getString(R.string.teacher_email));
+                        tilRegEmail.setHelperText(getString(R.string.teacher_email_help));
+                    }
+                } else {
+                    if (layoutStudentFields != null) layoutStudentFields.setVisibility(View.VISIBLE);
+                    if (layoutTeacherFields != null) layoutTeacherFields.setVisibility(View.GONE);
+                    if (tilRegEmail != null) {
+                        tilRegEmail.setHint(getString(R.string.student_email));
+                        tilRegEmail.setHelperText(getString(R.string.student_email_help));
+                    }
+                }
+                validateFormAndEnableButton();
+            });
+        }
+
+        // Terms Checkbox & Validation Listener
+        if (cbTerms != null) {
+            cbTerms.setOnCheckedChangeListener((buttonView, isChecked) -> validateFormAndEnableButton());
+        }
+
+        // Password Strength Meter Listener
+        if (etRegPassword != null) {
+            etRegPassword.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {
+                    updatePasswordStrengthMeter(s.toString());
+                    validateFormAndEnableButton();
+                }
+
+                @Override
+                public void afterTextChanged(Editable s) {}
+            });
+        }
+
+        setupFormChangeListeners();
+
+        if (btnRegister != null) btnRegister.setOnClickListener(v -> performRegistration());
+        if (tvLoginLink != null) {
+            tvLoginLink.setOnClickListener(v -> {
+                finish();
+                overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+            });
+        }
+
+        setupButtonTouchFeedback(btnRegister);
+        setupHapticFeedback();
+        checkPrefilledIntentData();
+    }
+
+    private void checkPrefilledIntentData() {
+        Intent intent = getIntent();
+        if (intent != null) {
+            String prefillEmail = intent.getStringExtra("prefill_email");
+            String prefillName = intent.getStringExtra("prefill_name");
+
+            if (prefillEmail != null && !prefillEmail.trim().isEmpty()) {
+                if (etRegEmail != null) {
+                    etRegEmail.setText(prefillEmail);
+                }
+                autoDetectRoleFromEmail(prefillEmail);
+            }
+            if (prefillName != null && !prefillName.trim().isEmpty()) {
+                if (etFullName != null) {
+                    etFullName.setText(prefillName);
+                }
+            }
+        }
+    }
+
+    private void setupButtonTouchFeedback(View btn) {
+        if (btn == null) return;
+        btn.setOnTouchListener((v, event) -> {
+            float durationScale = Settings.Global.getFloat(getContentResolver(), Settings.Global.ANIMATOR_DURATION_SCALE, 1.0f);
+            if (durationScale > 0f) {
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        v.animate().scaleX(0.98f).scaleY(0.98f).setDuration(100).start();
+                        break;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start();
+                        break;
+                }
+            }
+            return false;
+        });
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+            View v = getCurrentFocus();
+            if (v instanceof TextInputEditText || v instanceof EditText) {
+                Rect outRect = new Rect();
+                v.getGlobalVisibleRect(outRect);
+                if (!outRect.contains((int) ev.getRawX(), (int) ev.getRawY())) {
+                    v.clearFocus();
+                    InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+                    }
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    private void setupHapticFeedback() {
+        if (btnRegister != null) HapticUtils.attachMedium(btnRegister);
+        if (btnBackToLogin != null) HapticUtils.attachLight(btnBackToLogin);
+        if (btnSuccessBackToLogin != null) HapticUtils.attachLight(btnSuccessBackToLogin);
+        if (tvLoginLink != null) HapticUtils.attachLight(tvLoginLink);
+        if (radioGroupRole != null) HapticUtils.attachLight(radioGroupRole);
+        if (cbTerms != null) HapticUtils.attachLight(cbTerms);
+    }
+
+    private void autoDetectRoleFromEmail(String email) {
+        if (email == null || email.trim().isEmpty()) return;
+        String lowerEmail = email.trim().toLowerCase();
+        if (lowerEmail.endsWith("@bubt.edu.bd")) {
+            if (rbTeacher != null && !rbTeacher.isChecked()) {
+                rbTeacher.setChecked(true);
+            }
+        } else if (lowerEmail.contains("@")) {
+            if (rbStudent != null && !rbStudent.isChecked()) {
+                rbStudent.setChecked(true);
+            }
+        }
+    }
+
+    private void setupFormChangeListeners() {
+        TextWatcher tw = new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                validateFormAndEnableButton();
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {}
+        };
+
+        TextWatcher emailWatcher = new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                autoDetectRoleFromEmail(s.toString());
+                validateFormAndEnableButton();
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {}
+        };
+
+        if (etFullName != null) etFullName.addTextChangedListener(tw);
+        if (etRegEmail != null) etRegEmail.addTextChangedListener(emailWatcher);
+        if (etStudentId != null) etStudentId.addTextChangedListener(tw);
+        if (etTeacherCode != null) etTeacherCode.addTextChangedListener(tw);
+        if (etIntake != null) etIntake.addTextChangedListener(tw);
+    }
+
+    private void validateFormAndEnableButton() {
+        boolean nameOk = etFullName != null && etFullName.getText() != null && etFullName.getText().toString().trim().length() >= 3;
+        boolean isStudent = rbStudent != null && rbStudent.isChecked();
+
+        String emailStr = etRegEmail != null && etRegEmail.getText() != null ? etRegEmail.getText().toString().trim() : "";
+        boolean emailFormatOk = Patterns.EMAIL_ADDRESS.matcher(emailStr).matches();
+        boolean emailOk = isStudent ? emailFormatOk : (emailFormatOk && emailStr.toLowerCase().endsWith("@bubt.edu.bd"));
+
+        boolean idOk = isStudent ? 
+            (etStudentId != null && etStudentId.getText() != null && etStudentId.getText().toString().trim().length() >= 6) :
+            (etTeacherCode != null && etTeacherCode.getText() != null && etTeacherCode.getText().toString().trim().length() >= 3);
+            
+        boolean pwOk = etRegPassword != null && etRegPassword.getText() != null && etRegPassword.getText().toString().trim().length() >= 8;
+        boolean termsOk = cbTerms != null && cbTerms.isChecked();
+
+        boolean allValid = nameOk && emailOk && idOk && pwOk && termsOk;
+        if (btnRegister != null) {
+            btnRegister.setEnabled(allValid);
+        }
+    }
+
+    private void updatePasswordStrengthMeter(String pw) {
+        int score = 0;
+        if (pw.length() >= 8) score++;
+        if (pw.matches(".*[0-9].*")) score++;
+        if (pw.matches(".*[A-Z].*")) score++;
+        if (pw.matches(".*[^a-zA-Z0-9].*")) score++;
+
+        int color = Color.parseColor("#E2E8F0");
+        if (score == 1) color = Color.parseColor("#DC2626"); // Red
+        else if (score == 2) color = Color.parseColor("#F59E0B"); // Amber
+        else if (score == 3) color = Color.parseColor("#0066FF"); // Blue
+        else if (score >= 4) color = Color.parseColor("#16A34A"); // Green
+
+        if (meterBar1 != null) meterBar1.setBackgroundColor(score >= 1 ? color : Color.parseColor("#E2E8F0"));
+        if (meterBar2 != null) meterBar2.setBackgroundColor(score >= 2 ? color : Color.parseColor("#E2E8F0"));
+        if (meterBar3 != null) meterBar3.setBackgroundColor(score >= 3 ? color : Color.parseColor("#E2E8F0"));
+        if (meterBar4 != null) meterBar4.setBackgroundColor(score >= 4 ? color : Color.parseColor("#E2E8F0"));
+    }
+
+    private void launchDocumentScanner() {
+        if (documentScanner == null) return;
+
+        documentScanner.getStartScanIntent(this)
+            .addOnSuccessListener(intentSender -> docScannerLauncher.launch(new IntentSenderRequest.Builder(intentSender).build()))
+            .addOnFailureListener(e -> {
+                Log.e("RegisterActivity", "Document scanner failed to start", e);
+            });
+    }
+
+    private void processScannedDocumentUri(Uri imageUri) {
+        try {
+            InputImage image = InputImage.fromFilePath(this, imageUri);
+            TextRecognizer recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
+
+            recognizer.process(image)
+                .addOnSuccessListener(visionText -> parseAndAutoFillIdCardText(visionText.getText()))
+                .addOnFailureListener(e -> {
+                    Log.e("RegisterActivity", "ML Kit OCR scan failed", e);
+                });
+        } catch (IOException e) {
+            Log.e("RegisterActivity", "Failed to load document image for OCR", e);
+        }
+    }
+
+    private void parseAndAutoFillIdCardText(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return;
+        }
+
+        String[] lines = text.split("\n");
+        String extractedName = null;
+        String extractedId = null;
+        String extractedIntake = null;
+        String extractedDept = null;
+        int idLineIndex = -1;
+
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i] != null ? lines[i].trim() : "";
+            Log.d("OCR_DEBUG", line);
+
+            if (line.isEmpty()) continue;
+
+            if (extractedId == null) {
+                if (line.contains("ID-") || line.startsWith("20") || line.toUpperCase().contains("ID")) {
+                    String cleanId = line.replaceAll("(?i)id[-:]?", "").replaceAll("[^0-9]", "").trim();
+                    if (cleanId.length() >= 6) {
+                        extractedId = cleanId;
+                        idLineIndex = i;
+                    }
+                }
+            }
+
+            if (extractedIntake == null) {
+                Matcher intakeMatcher = Pattern.compile("(?i)intake\\s*[:.-]?\\s*([0-9]{1,3})").matcher(line);
+                if (intakeMatcher.find()) {
+                    extractedIntake = intakeMatcher.group(1);
+                }
+            }
+
+            if (extractedDept == null) {
+                String lowerLine = line.toLowerCase();
+                if (lowerLine.contains("cse") || lowerLine.contains("computer science") || lowerLine.contains("engineering")) {
+                    if (lowerLine.contains("eee") || lowerLine.contains("electrical")) {
+                        extractedDept = "Electrical & Electronic Engineering (EEE)";
+                    } else if (lowerLine.contains("civil") || lowerLine.contains("ce")) {
+                        extractedDept = "Civil Engineering (CE)";
+                    } else if (lowerLine.contains("textile") || lowerLine.contains("te")) {
+                        extractedDept = "Textile Engineering (TE)";
+                    } else {
+                        extractedDept = "Computer Science & Engineering (CSE)";
+                    }
+                } else if (lowerLine.contains("bba") || lowerLine.contains("business administration") || lowerLine.contains("bachelor of business")) {
+                    extractedDept = "Bachelor of Business Administration (BBA)";
+                } else if (lowerLine.contains("eee") || lowerLine.contains("electrical")) {
+                    extractedDept = "Electrical & Electronic Engineering (EEE)";
+                } else if (lowerLine.contains("english") || (lowerLine.matches(".*\\beng\\b.*") && !lowerLine.contains("engineering"))) {
+                    extractedDept = "English (ENG)";
+                } else if (lowerLine.contains("law") || lowerLine.contains("justice")) {
+                    extractedDept = "Law & Justice (L&J)";
+                } else if (lowerLine.contains("acc") || lowerLine.contains("accounting")) {
+                    extractedDept = "Accounting (ACC)";
+                } else if (lowerLine.contains("fin") || lowerLine.contains("finance")) {
+                    extractedDept = "Finance (FIN)";
+                } else if (lowerLine.contains("mgt") || lowerLine.contains("management")) {
+                    extractedDept = "Management (MGT)";
+                } else if (lowerLine.contains("mkt") || lowerLine.contains("marketing")) {
+                    extractedDept = "Marketing (MKT)";
+                } else if (lowerLine.contains("civil")) {
+                    extractedDept = "Civil Engineering (CE)";
+                } else if (lowerLine.contains("textile")) {
+                    extractedDept = "Textile Engineering (TE)";
+                } else if (lowerLine.contains("math") || lowerLine.contains("stat")) {
+                    extractedDept = "Mathematics & Statistics (M&S)";
+                } else if (lowerLine.contains("econ")) {
+                    extractedDept = "Economics (ECO)";
+                } else if (lowerLine.contains("dse") || lowerLine.contains("data science")) {
+                    extractedDept = "Data Science & Engineering (DSE)";
+                }
+            }
+        }
+
+        if (idLineIndex != -1) {
+            StringBuilder nameBuilder = new StringBuilder();
+            int startIndex = Math.max(0, idLineIndex - 4);
+            for (int i = startIndex; i < idLineIndex; i++) {
+                String line = lines[i].trim();
+                if (line.isEmpty()) continue;
+                String upper = line.toUpperCase();
+                if (upper.contains("STUDENT") || upper.contains("BANGLADESH") || upper.contains("UNIVERSITY") ||
+                    upper.contains("BUSINESS") || upper.contains("TECHNOLOGY") || upper.contains("BUBT") ||
+                    upper.contains("IDENTITY") || upper.contains("CARD") || upper.contains("CAMPUS")) {
+                    continue;
+                }
+                String cleaned = line.replaceAll("(?i)^(name|student name|name\\s*:)\\s*[:.-]?", "").trim();
+                if (!cleaned.isEmpty()) {
+                    if (nameBuilder.length() > 0) nameBuilder.append(" ");
+                    nameBuilder.append(cleaned);
+                }
+            }
+            String candidateName = nameBuilder.toString().trim();
+            if (!candidateName.isEmpty()) extractedName = candidateName;
+        }
+
+        if (extractedName != null && !extractedName.isEmpty() && etFullName != null) {
+            etFullName.setText(extractedName);
+            etFullName.setFocusable(true);
+            etFullName.setFocusableInTouchMode(true);
+            etFullName.setEnabled(true);
+        }
+
+        if (extractedId != null && !extractedId.isEmpty()) {
+            if (rbStudent != null && rbStudent.isChecked() && etStudentId != null) {
+                etStudentId.setText(extractedId);
+                etStudentId.setFocusable(false);
+                etStudentId.setFocusableInTouchMode(false);
+                if (tilStudentId != null) {
+                    tilStudentId.setHelperText("Verified via BUBT ID Card Scan (Read-Only)");
+                    tilStudentId.setHelperTextColor(ColorStateList.valueOf(Color.parseColor("#059669")));
+                }
+            } else if (etTeacherCode != null) {
+                etTeacherCode.setText(extractedId);
+                etTeacherCode.setFocusable(false);
+                etTeacherCode.setFocusableInTouchMode(false);
+                if (tilTeacherCode != null) {
+                    tilTeacherCode.setHelperText("Verified via BUBT ID Card Scan (Read-Only)");
+                    tilTeacherCode.setHelperTextColor(ColorStateList.valueOf(Color.parseColor("#059669")));
+                }
+            }
+            CustomToast.show(RegisterActivity.this, "ID Card scanned! Student ID locked for security.");
+        }
+
+        if (extractedIntake != null && etIntake != null) {
+            etIntake.setText(extractedIntake);
+        }
+
+        if (extractedDept != null) {
+            int matchIndex = 0;
+            for (int i = 0; i < DEPARTMENTS.length; i++) {
+                if (DEPARTMENTS[i].equalsIgnoreCase(extractedDept) || DEPARTMENTS[i].toUpperCase().contains(extractedDept.toUpperCase())) {
+                    matchIndex = i;
+                    break;
+                }
+            }
+            if (spinnerDept != null) spinnerDept.setSelection(matchIndex);
+            if (spinnerTeacherDept != null) spinnerTeacherDept.setSelection(matchIndex);
+        }
+    }
+
+    private boolean isDummyOrGibberish(String text) {
+        if (text == null || text.trim().isEmpty()) return true;
+        String lower = text.trim().toLowerCase();
+        String[] dummyKeywords = {
+            "test", "demo", "dummy", "admin", "qwerty", "asdf", "habijabi", "habi-jabi", 
+            "xyz", "xxxx", "aaaa", "zzzz", "12345", "00000", "null", "undefined", "sample", "temp"
+        };
+        for (String kw : dummyKeywords) {
+            if (lower.contains(kw)) return true;
+        }
+        return false;
+    }
+
+    private void performRegistration() {
+        String name = etFullName != null && etFullName.getText() != null ? etFullName.getText().toString().trim() : "";
+        String email = etRegEmail != null && etRegEmail.getText() != null ? etRegEmail.getText().toString().trim() : "";
+        boolean isStudent = rbStudent != null && rbStudent.isChecked();
+        
+        String id = isStudent ? 
+            (etStudentId != null && etStudentId.getText() != null ? etStudentId.getText().toString().trim() : "") :
+            (etTeacherCode != null && etTeacherCode.getText() != null ? etTeacherCode.getText().toString().trim() : "");
+            
+        String password = etRegPassword != null && etRegPassword.getText() != null ? etRegPassword.getText().toString().trim() : "";
+        String section = isStudent ? 
+            (spinnerStudentSection != null && spinnerStudentSection.getSelectedItem() != null ? spinnerStudentSection.getSelectedItem().toString() : "1") :
+            "6";
+        String intake = (isStudent && etIntake != null && etIntake.getText() != null) ? etIntake.getText().toString().trim() : "";
+        String dept = isStudent ?
+            (spinnerDept != null && spinnerDept.getSelectedItem() != null ? spinnerDept.getSelectedItem().toString() : DEPARTMENTS[0]) :
+            (spinnerTeacherDept != null && spinnerTeacherDept.getSelectedItem() != null ? spinnerTeacherDept.getSelectedItem().toString() : DEPARTMENTS[0]);
+
+        if (name.isEmpty() || name.length() < 3 || isDummyOrGibberish(name)) {
+            if (etFullName != null) {
+                etFullName.setError("Enter a valid full name");
+                etFullName.startAnimation(AnimationUtils.loadAnimation(this, R.anim.shake));
+                etFullName.requestFocus();
+            }
+            return;
+        }
+
+        if (email.isEmpty() || !Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            if (etRegEmail != null) {
+                etRegEmail.setError("Enter a valid email address");
+                etRegEmail.startAnimation(AnimationUtils.loadAnimation(this, R.anim.shake));
+                etRegEmail.requestFocus();
+            }
+            return;
+        }
+
+        if (!isStudent && !email.toLowerCase().endsWith("@bubt.edu.bd")) {
+            if (etRegEmail != null) {
+                etRegEmail.setError("Teacher email must end with @bubt.edu.bd");
+                etRegEmail.startAnimation(AnimationUtils.loadAnimation(this, R.anim.shake));
+                etRegEmail.requestFocus();
+            }
+            return;
+        }
+
+        if (id.isEmpty() || isDummyOrGibberish(id)) {
+            String idLabel = isStudent ? "Student ID" : "Teacher Code";
+            CustomToast.show(this, "Please tap 'Scan BUBT ID card' above to verify your " + idLabel);
+            if (btnScanIdCardContainer != null) {
+                btnScanIdCardContainer.startAnimation(AnimationUtils.loadAnimation(this, R.anim.shake));
+            } else if (btnScanIdCard != null) {
+                btnScanIdCard.startAnimation(AnimationUtils.loadAnimation(this, R.anim.shake));
+            }
+            launchDocumentScanner();
+            return;
+        }
+
+        if (password.length() < 8 || !password.matches(".*[0-9].*")) {
+            if (etRegPassword != null) {
+                etRegPassword.setError("8+ characters with at least 1 number required");
+                etRegPassword.startAnimation(AnimationUtils.loadAnimation(this, R.anim.shake));
+                etRegPassword.requestFocus();
+            }
+            return;
+        }
+
+        String role = isStudent ? "Student" : "Teacher/Admin";
+        String assignedSection = isStudent ? section : "";
+
+        btnRegister.setEnabled(false);
+        btnRegister.setText("Checking ID Availability...");
+
+        checkDuplicateAndRegister(email, password, name, id, role, isStudent, section, assignedSection, intake, dept);
+    }
+
+    private void checkDuplicateAndRegister(String email, String password, String name, String id, String role, boolean isStudent, String section, String assignedSection, String intake, String dept) {
+        String sanitizedId = id.replace(".", "_").replace("@", "_").replace("#", "_").replace("$", "_").replace("[", "_").replace("]", "_");
+        DatabaseReference dbRef = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com").getReference("crconnect_db");
+
+        dbRef.child("users").child(sanitizedId).addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                if (snapshot.exists()) {
+                    String existingEmail = snapshot.child("email").getValue(String.class);
+                    if (existingEmail != null && existingEmail.equalsIgnoreCase(email)) {
+                        btnRegister.setText("Creating Account...");
+                        executeFirebaseAuth(email, password, name, id, role, isStudent, section, assignedSection, intake, dept);
+                    } else {
+                        btnRegister.setEnabled(true);
+                        btnRegister.setText("Register");
+                        String idLabel = isStudent ? "Student ID" : "Teacher Code";
+                        CustomToast.show(RegisterActivity.this, idLabel + " (" + id + ") is already registered to another email address!");
+                        if (isStudent && etStudentId != null) {
+                            etStudentId.setError(idLabel + " already registered");
+                            etStudentId.startAnimation(AnimationUtils.loadAnimation(RegisterActivity.this, R.anim.shake));
+                            etStudentId.requestFocus();
+                        } else if (!isStudent && etTeacherCode != null) {
+                            etTeacherCode.setError(idLabel + " already registered");
+                            etTeacherCode.startAnimation(AnimationUtils.loadAnimation(RegisterActivity.this, R.anim.shake));
+                            etTeacherCode.requestFocus();
+                        }
+                    }
+                } else {
+                    btnRegister.setText("Creating Account...");
+                    executeFirebaseAuth(email, password, name, id, role, isStudent, section, assignedSection, intake, dept);
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                btnRegister.setText("Creating Account...");
+                executeFirebaseAuth(email, password, name, id, role, isStudent, section, assignedSection, intake, dept);
+            }
+        });
+    }
+
+    private void executeFirebaseAuth(String email, String password, String name, String id, String role, boolean isStudent, String section, String assignedSection, String intake, String dept) {
+        FirebaseAuth auth = FirebaseAuth.getInstance();
+
+        if (googleAccount != null && googleAccount.getIdToken() != null && !googleAccount.getIdToken().isEmpty()) {
+            AuthCredential credential = GoogleAuthProvider.getCredential(googleAccount.getIdToken(), null);
+            auth.signInWithCredential(credential)
+                .addOnSuccessListener(authResult -> {
+                    FirebaseUser user = authResult.getUser();
+                    if (user == null) {
+                        btnRegister.setEnabled(true);
+                        btnRegister.setText("Register");
+                        CustomToast.show(RegisterActivity.this, "Failed to connect Google account. Please try again.");
+                        return;
+                    }
+                    lastCreatedUser = user;
+                    saveUserDataAndFinish(user.getUid(), name, email, id, role, isStudent, section, assignedSection, intake, dept);
+                })
+                .addOnFailureListener(e -> {
+                    executeEmailPasswordAuth(auth, email, password, name, id, role, isStudent, section, assignedSection, intake, dept);
+                });
+        } else {
+            executeEmailPasswordAuth(auth, email, password, name, id, role, isStudent, section, assignedSection, intake, dept);
+        }
+    }
+
+    private void executeEmailPasswordAuth(FirebaseAuth auth, String email, String password, String name, String id, String role, boolean isStudent, String section, String assignedSection, String intake, String dept) {
+        auth.createUserWithEmailAndPassword(email, password)
+            .addOnSuccessListener(authResult -> {
+                FirebaseUser user = authResult.getUser();
+                if (user == null) {
+                    btnRegister.setEnabled(true);
+                    btnRegister.setText("Register");
+                    CustomToast.show(RegisterActivity.this, "Failed to create user account. Please try again.");
+                    return;
+                }
+                lastCreatedUser = user;
+                user.sendEmailVerification()
+                    .addOnCompleteListener(task -> {
+                        if (task.isSuccessful()) {
+                            Log.d("RegisterActivity", "Verification email sent to " + email);
+                        } else {
+                            Log.e("RegisterActivity", "Failed to send verification email", task.getException());
+                        }
+                    });
+                
+                auth.signOut();
+
+                saveUserDataAndFinish(user.getUid(), name, email, id, role, isStudent, section, assignedSection, intake, dept);
+            })
+            .addOnFailureListener(e -> {
+                Log.e("RegisterActivity", "FirebaseAuth error: " + e.getMessage(), e);
+                btnRegister.setEnabled(true);
+                btnRegister.setText("Register");
+
+                String errorMessage = "Registration failed. Please try again.";
+                if (e instanceof FirebaseAuthUserCollisionException) {
+                    errorMessage = "An account with this email address already exists.";
+                } else if (e instanceof FirebaseAuthWeakPasswordException) {
+                    errorMessage = "Password is too weak. Please use a stronger password.";
+                } else if (e instanceof FirebaseAuthInvalidCredentialsException) {
+                    errorMessage = "Invalid email format or credentials.";
+                } else if (e.getMessage() != null && !e.getMessage().isEmpty()) {
+                    errorMessage = e.getMessage();
+                }
+                CustomToast.show(RegisterActivity.this, errorMessage);
+            });
+    }
+
+    private void saveUserDataAndFinish(String uid, String name, String email, String id, String role, boolean isStudent, String section, String assignedSection, String intake, String dept) {
+        String sanitizedId = id.replace(".", "_").replace("@", "_").replace("#", "_").replace("$", "_").replace("[", "_").replace("]", "_");
+        String sanitizedEmail = email.replace(".", "_").replace("@", "_").replace("#", "_").replace("$", "_").replace("[", "_").replace("]", "_");
+
+        DatabaseReference dbRef = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com").getReference("crconnect_db");
+
+        Map<String, Object> userMap = new HashMap<>();
+        userMap.put("name", name);
+        userMap.put("email", email);
+        userMap.put("id", id);
+        userMap.put("role", role);
+        userMap.put("section", isStudent ? section : "--");
+        userMap.put("assignedSection", assignedSection);
+        userMap.put("intake", isStudent ? intake : "--");
+        userMap.put("dept", (dept != null && !dept.isEmpty()) ? dept : "Department of CSE, BUBT");
+        userMap.put("deviceId", Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID));
+        userMap.put("registeredAt", System.currentTimeMillis());
+
+        if (googleAccount != null && googleAccount.getPhotoUrl() != null) {
+            userMap.put("profileImageUrl", googleAccount.getPhotoUrl().toString());
+        }
+
+        if (uid != null && !uid.isEmpty()) {
+            dbRef.child("users").child(uid).setValue(userMap);
+        }
+        dbRef.child("users").child(sanitizedId).setValue(userMap);
+        dbRef.child("users").child(sanitizedEmail).setValue(userMap)
+            .addOnSuccessListener(aVoid -> Log.d("RegisterActivity", "RTDB user profile saved successfully"))
+            .addOnFailureListener(e -> Log.e("RegisterActivity", "Failed to save user profile to RTDB", e));
+
+        FirebaseFirestore firestore = FirebaseFirestore.getInstance();
+        if (uid != null && !uid.isEmpty()) {
+            firestore.collection("users").document(uid).set(userMap);
+        }
+        firestore.collection("users").document(sanitizedId).set(userMap);
+        firestore.collection("users").document(sanitizedEmail).set(userMap)
+            .addOnSuccessListener(aVoid -> Log.d("RegisterActivity", "Firestore user profile saved successfully"))
+            .addOnFailureListener(e -> Log.e("RegisterActivity", "Failed to save user profile to Firestore", e));
+
+        runOnUiThread(() -> {
+            if (layoutFormCard != null) layoutFormCard.setVisibility(View.GONE);
+            if (layoutSuccessCard != null) layoutSuccessCard.setVisibility(View.VISIBLE);
+            if (layoutStickyFooter != null) layoutStickyFooter.setVisibility(View.GONE);
+        });
+    }
+
+    private void handleGoogleRegistrationSuccess(GoogleSignInAccount account) {
+        if (account == null) return;
+        googleAccount = account;
+
+        String email = account.getEmail();
+
+        if (etRegEmail != null && email != null && !email.trim().isEmpty()) {
+            etRegEmail.setText(email);
+            autoDetectRoleFromEmail(email);
+        }
+
+        CustomToast.show(RegisterActivity.this, "Google account connected! Please tap 'Scan BUBT ID card' above to set your Name and ID.");
+
+        if (rbStudent != null && rbStudent.isChecked() && etStudentId != null) {
+            etStudentId.requestFocus();
+        } else if (etTeacherCode != null) {
+            etTeacherCode.requestFocus();
+        }
+
+        validateFormAndEnableButton();
+    }
+}

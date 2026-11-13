@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "665787114569",
+    "firebase_url": "https://crconnect-58521-default-rtdb.firebaseio.com",
+    "project_id": "crconnect-58521",
+    "storage_bucket": "crconnect-58521.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:665787114569:android:7ddec0c0b6d7ec13a9cb98",
+        "android_client_info": {
+          "package_name": "com.example.crconnect"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "665787114569-3197346klpt3vr7i5mf9go9clmaoid18.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.crconnect",
+            "certificate_hash": "aafba9bd445ba40b355ec235a5b911873ffbbc43"
+          }
+        },
+        {
+          "client_id": "665787114569-qjmr2r6810od111vu1iddc7kkvl39m99.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAA9eEQhuFYwq_OzX7qh0epnWyynrJVAk0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "665787114569-qjmr2r6810od111vu1iddc7kkvl39m99.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

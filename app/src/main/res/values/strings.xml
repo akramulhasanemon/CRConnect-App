@@ -1,0 +1,78 @@
+<resources>
+    <string name="app_name">CRConnect</string>
+    <string name="app_subtitle">BUBT Department Network</string>
+    <string name="welcome_badge">Sign in to your class hub</string>
+    <string name="bubt_logo_desc">CRConnect Logo</string>
+    <string name="dev_student">⚡ DEV: Student</string>
+    <string name="dev_teacher">⚡ DEV: Teacher</string>
+
+    <string name="student">Student</string>
+    <string name="teacher">Teacher</string>
+    <string name="teacher_admin">Teacher / Admin</string>
+
+    <string name="student_id_or_email">Student email</string>
+    <string name="teacher_id_or_email">Teacher email</string>
+    <string name="teacher_code_or_email">Teacher email</string>
+    <string name="id_hint_student">e.g., student@gmail.com</string>
+    <string name="id_hint_teacher">e.g., teacher@bubt.edu.bd</string>
+
+    <string name="error_id_empty">Please enter your email</string>
+    <string name="error_password_empty">Please enter your password</string>
+
+    <string name="cd_user_icon">User icon</string>
+    <string name="cd_lock_icon">Lock icon</string>
+    <string name="cd_toggle_password">Toggle password visibility</string>
+
+    <string name="password">Password</string>
+    <string name="password_placeholder">Enter your password</string>
+    <string name="remember_me">Remember login info</string>
+    <string name="forgot_password">Forgot password?</string>
+    <string name="sign_in">Sign in</string>
+    <string name="new_here">New here?</string>
+    <string name="create_account">Create an account</string>
+    <string name="bubt_full_name">Bangladesh University of Business &amp; Technology</string>
+
+    <string name="create_account_title">Create account</string>
+    <string name="join_network_sub">Join CRConnect Network</string>
+    <string name="scan_bubt_id">Scan BUBT ID card</string>
+    <string name="scan_id_sub">Auto-fills name, ID, intake and department</string>
+    <string name="or_enter_manually">or enter manually</string>
+
+    <string name="sect_personal">Personal</string>
+    <string name="full_name">Full name</string>
+
+    <string name="student_email">Enter your email address</string>
+    <string name="teacher_email">Teacher email</string>
+    <string name="student_email_help">Use an email you check often</string>
+    <string name="teacher_email_help">\@bubt.edu.bd required</string>
+
+    <string name="sect_academic">Academic</string>
+    <string name="student_id">Student ID</string>
+    <string name="teacher_code">Teacher code / ID</string>
+
+    <string name="intake">Intake</string>
+    <string name="section">Section</string>
+    <string name="department">Department</string>
+    <string name="assigned_section">Assigned section</string>
+
+    <string name="sect_security">Security</string>
+    <string name="new_password">New password</string>
+    <string name="password_help">8+ characters, at least 1 number</string>
+
+    <string name="terms_consent">I agree to the Terms and Privacy Policy</string>
+    <string name="register">Register</string>
+    <string name="already_have_account">Already have an account? Sign in</string>
+
+    <string name="reset_password">Reset password</string>
+    <string name="forgot_your_password_title">Forgot your password?</string>
+    <string name="id_or_email_hint">Student email</string>
+    <string name="id_hint_forgot">e.g., example@gmail.com</string>
+    <string name="forgot_sub">Enter your student email. We\'ll send a password reset link to your email.</string>
+    <string name="send_reset_link">Send reset link</string>
+    <string name="check_email_title">Check your email</string>
+    <string name="check_email_sub">We sent a password reset link to %1$s.</string>
+    <string name="check_email_help">Open your email inbox and click the reset link. Check your Spam folder if you don\'t see it.</string>
+    <string name="resend_reset_email">Resend email</string>
+    <string name="use_different_id">Use a different email</string>
+    <string name="back_to_sign_in">Back to sign in</string>
+</resources>
