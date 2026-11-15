@@ -23,7 +23,7 @@ val Primary = Color(0xFF0062FF)
 val PrimaryPressed = Color(0xFF0052CC)
 val TintLightBlue = Color(0xFFEBF3FF)
 val TintLightBlueBorder = Color(0xFFBFD7FF)
-val BackgroundColor = Color(0xFFE9EEF4)
+val BackgroundColor = Color(0xFFEAF2FF)
 val TitleText = Color(0xFF0F172A)
 val MutedText = Color(0xFF64748B)
 val BorderColor = Color(0xFFE5E7EB)
@@ -156,11 +156,11 @@ fun getPortalGradient(darkTheme: Boolean): Brush {
             )
         )
     } else {
+        // Uniform soft light-blue tint to match Top App Bar without any seams
         Brush.verticalGradient(
             colors = listOf(
-                Color(0xFFE0F2FE), // Soft Sky Blue tint
-                Color(0xFFF0F9FF), // Very light soft blue
-                Color(0xFFF8FAFC)  // Clean off-white surface
+                Color(0xFFEAF2FF),
+                Color(0xFFEAF2FF)
             )
         )
     }

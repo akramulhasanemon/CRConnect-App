@@ -86,11 +86,12 @@
                     android:textSize="14sp"
                     tools:ignore="HardcodedText" />
 
-                <!-- Dept Pill -->
+                <!-- Dept Pill (Removed as requested) -->
                 <TextView
                     android:id="@+id/tvProfileDept"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:visibility="gone"
                     android:layout_marginTop="8dp"
                     android:background="@drawable/bg_profile_dept_pill"
                     android:paddingHorizontal="14dp"

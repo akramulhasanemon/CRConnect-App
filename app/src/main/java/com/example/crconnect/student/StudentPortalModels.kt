@@ -42,24 +42,52 @@ fun endMinutes(timeSlot: String): Int {
     return if (parsed > 0) parsed else startMinutes(timeSlot) + 90
 }
 
-fun getClassTimingStatus(dayIndex: Int, timeSlot: String): ClassTimingStatus {
+data class WeeklyAttendanceArchive(
+    val weekKey: String = "",
+    val dateRange: String = "",
+    val attendedClasses: Int = 0,
+    val totalClasses: Int = 0,
+    val percentage: Int = 0,
+    val archivedAt: Long = System.currentTimeMillis()
+)
+
+fun getDayOffsetFromSunday(dayIndex: Int): Int {
+    return when (dayIndex) {
+        1 -> 0 // Sunday
+        2 -> 1 // Monday
+        3 -> 2 // Tuesday
+        4 -> 3 // Wednesday
+        5 -> 4 // Thursday
+        6 -> 5 // Friday
+        0 -> 6 // Saturday
+        else -> dayIndex
+    }
+}
+
+fun getTodayOffsetFromSunday(): Int {
     val cal = Calendar.getInstance()
-    val todayIdx = when (cal.get(Calendar.DAY_OF_WEEK)) {
-        Calendar.SATURDAY -> 0
-        Calendar.SUNDAY -> 1
-        Calendar.MONDAY -> 2
-        Calendar.TUESDAY -> 3
-        Calendar.WEDNESDAY -> 4
-        Calendar.THURSDAY -> 5
-        Calendar.FRIDAY -> 6
+    return when (cal.get(Calendar.DAY_OF_WEEK)) {
+        Calendar.SUNDAY -> 0
+        Calendar.MONDAY -> 1
+        Calendar.TUESDAY -> 2
+        Calendar.WEDNESDAY -> 3
+        Calendar.THURSDAY -> 4
+        Calendar.FRIDAY -> 5
+        Calendar.SATURDAY -> 6
         else -> 0
     }
+}
 
-    if (dayIndex < todayIdx) {
+fun getClassTimingStatus(dayIndex: Int, timeSlot: String): ClassTimingStatus {
+    val todayOffset = getTodayOffsetFromSunday()
+    val classDayOffset = getDayOffsetFromSunday(dayIndex)
+
+    if (classDayOffset < todayOffset) {
         return ClassTimingStatus.PAST
-    } else if (dayIndex > todayIdx) {
+    } else if (classDayOffset > todayOffset) {
         return ClassTimingStatus.FUTURE
     } else {
+        val cal = Calendar.getInstance()
         val currentMinutes = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
         val startMins = startMinutes(timeSlot)
         val endMins = endMinutes(timeSlot)
@@ -81,6 +109,24 @@ fun getEffectiveAttendanceState(dayIndex: Int, classModel: ClassModel): String? 
         return "missed"
     }
     return classModel.attendanceState
+}
+
+fun normalizeCourseCode(rawCourse: String): String {
+    if (rawCourse.isBlank()) return ""
+    // Strip faculty in parentheses e.g. "CSE 301 (NAA)" -> "CSE 301"
+    val withoutFaculty = rawCourse.split("(").firstOrNull()?.trim() ?: rawCourse.trim()
+    // Split course code and title separated by dot/dash/colon, e.g. "CSE 301 · Algorithms" -> "CSE 301"
+    val clean = withoutFaculty.split("·", " - ", ":").firstOrNull()?.trim() ?: withoutFaculty
+    return clean.replace("\\s+".toRegex(), " ").uppercase(Locale.getDefault())
+}
+
+fun computeUniqueCoursesCount(classMap: Map<Int, List<ClassModel>>): Int {
+    val allClasses = classMap.values.flatten()
+    return allClasses
+        .map { normalizeCourseCode(it.courseName) }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .size
 }
 
 data class UserProfileModel(
@@ -232,5 +278,7 @@ data class StudentPortalUiState(
     val isUpdateAvailable: Boolean = false,
     val latestVersionName: String = "",
     val updateUrl: String = "https://github.com/shaddhow/CRConnect-App/releases/latest",
-    val isCheckingUpdate: Boolean = false
+    val isCheckingUpdate: Boolean = false,
+    val uniqueCourseCount: Int = 0,
+    val attendanceArchives: List<WeeklyAttendanceArchive> = emptyList()
 )

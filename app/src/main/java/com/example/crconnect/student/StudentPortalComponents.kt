@@ -277,10 +277,11 @@ fun TextLink(
 fun TopHeader(
     title: String = "Class Routine",
     name: String = "Student",
-    department: String = "Dept. of CSE, BUBT",
+    department: String = "",
     initials: String = "ST",
     profileImageUrl: String = "",
     isCr: Boolean = false,
+    isProfileTab: Boolean = false,
     onMenuClick: () -> Unit,
     onAvatarClick: () -> Unit,
     onSignOutClick: () -> Unit,
@@ -327,105 +328,120 @@ fun TopHeader(
 
         Spacer(modifier = Modifier.width(12.dp))
 
-        // 2. Avatar Circle: 44dp x 44dp, filled #0066FF
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(2.dp)
-                .clip(CircleShape)
-                .background(Color.Transparent)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onAvatarClick() },
-            contentAlignment = Alignment.Center
-        ) {
-            key(profileImageUrl) {
-                val bitmap = remember(profileImageUrl) {
-                    val path = profileImageUrl
-                    try {
-                        if (path.isNotBlank()) {
-                            if (!path.startsWith("http") && !path.startsWith("data:") && !path.startsWith("content:")) {
-                                val file = File(path)
-                                if (file.exists() && file.length() > 0) BitmapFactory.decodeFile(file.absolutePath) else null
+        if (!isProfileTab) {
+            // 2. Avatar Circle: 44dp x 44dp, filled #0066FF
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(2.dp)
+                    .clip(CircleShape)
+                    .background(Color.Transparent)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onAvatarClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                key(profileImageUrl) {
+                    val bitmap = remember(profileImageUrl) {
+                        val path = profileImageUrl
+                        try {
+                            if (path.isNotBlank()) {
+                                if (!path.startsWith("http") && !path.startsWith("data:") && !path.startsWith("content:")) {
+                                    val file = File(path)
+                                    if (file.exists() && file.length() > 0) BitmapFactory.decodeFile(file.absolutePath) else null
+                                } else null
                             } else null
-                        } else null
-                    } catch (e: Exception) {
-                        null
+                        } catch (e: Exception) {
+                            null
+                        }
                     }
-                }
 
-                if (bitmap != null) {
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = "Profile",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                    )
-                } else if (profileImageUrl.isNotBlank()) {
-                    AndroidView(
-                        factory = { ctx ->
-                            ImageView(ctx).apply {
-                                scaleType = ImageView.ScaleType.CENTER_CROP
-                                Glide.with(ctx)
+                    if (bitmap != null) {
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "Profile",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape)
+                        )
+                    } else if (profileImageUrl.isNotBlank()) {
+                        AndroidView(
+                            factory = { ctx ->
+                                ImageView(ctx).apply {
+                                    scaleType = ImageView.ScaleType.CENTER_CROP
+                                    Glide.with(ctx)
+                                        .load(profileImageUrl)
+                                        .circleCrop()
+                                        .signature(ObjectKey(profileImageUrl))
+                                        .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                                        .into(this)
+                                }
+                            },
+                            update = { view ->
+                                Glide.with(view.context)
                                     .load(profileImageUrl)
                                     .circleCrop()
                                     .signature(ObjectKey(profileImageUrl))
                                     .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
-                                    .into(this)
-                            }
-                        },
-                        update = { view ->
-                            Glide.with(view.context)
-                                .load(profileImageUrl)
-                                .circleCrop()
-                                .signature(ObjectKey(profileImageUrl))
-                                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
-                                .into(view)
-                        },
-                        modifier = Modifier.fillMaxSize().clip(CircleShape)
-                    )
-                } else {
-                    AnimatedAvatarPlaceholder(size = 40.dp, iconSize = 20.dp)
+                                    .into(view)
+                            },
+                            modifier = Modifier.fillMaxSize().clip(CircleShape)
+                        )
+                    } else {
+                        AnimatedAvatarPlaceholder(size = 40.dp, iconSize = 20.dp)
+                    }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+        }
 
         // 3. Title & Subtitle Column
         Column(
             modifier = Modifier.weight(1f)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            if (isProfileTab) {
+                // When Profile tab is active: Hide profile picture and user name, show only registered department name!
                 Text(
-                    text = displayTitle,
+                    text = displayDepartment,
                     fontFamily = PlusJakartaSansFontFamily,
-                    fontSize = 15.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                if (isCr) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    GlassCrBadge()
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = name.ifBlank { displayTitle },
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (isCr) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        GlassCrBadge()
+                    }
                 }
+                Text(
+                    text = displayDepartment,
+                    fontFamily = PlusJakartaSansFontFamily,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            Text(
-                text = displayDepartment,
-                fontFamily = PlusJakartaSansFontFamily,
-                fontSize = 13.5.sp,
-                fontWeight = FontWeight.Normal,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
         }
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -484,9 +500,9 @@ fun StudentBottomNavigation(
 ) {
     val isDark = LocalIsDarkTheme.current
     val navSelectedColor = if (isDark) Color(0xFF3B82F6) else Color(0xFF0066FF)
-    val navUnselectedColor = if (isDark) Color(0xFF2A3A52) else Color(0xFFB0BCCF)
-    val surfaceColor = if (isDark) Color(0xFF111827) else Color.White
-    val borderStrokeColor = if (isDark) Color(0x12FFFFFF) else Color(0x0F000000)
+    val navUnselectedColor = if (isDark) DarkMutedText else Color(0xFF64748B)
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val borderStrokeColor = MaterialTheme.colorScheme.outline
     val view = LocalView.current
 
     Box(
@@ -517,12 +533,13 @@ fun StudentBottomNavigation(
             ) {
                 val items = listOf(
                     Triple("Routine", R.drawable.ic_nav_routine, 0),
-                    Triple("Election", R.drawable.ic_nav_candidates, 1),
-                    Triple("Profile", R.drawable.ic_nav_profile, 2)
+                    Triple("Attendance", R.drawable.ic_nav_attendance, 1),
+                    Triple("Election", R.drawable.ic_nav_candidates, 2),
+                    Triple("Profile", R.drawable.ic_nav_profile, 3)
                 )
 
                 items.forEach { (label, iconRes, index) ->
-                    val isLocked = (index == 1 && !isGateOpen)
+                    val isLocked = (index == 2 && !isGateOpen)
                     val selected = selectedTab == index
                     val itemColor = if (isLocked) DisabledText else if (selected) navSelectedColor else navUnselectedColor
 

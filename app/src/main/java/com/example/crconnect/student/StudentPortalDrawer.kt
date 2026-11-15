@@ -236,11 +236,25 @@ fun StudentPortalDrawerContent(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
+                DrawerNavItem(
+                    label = "Attendance",
+                    iconRes = R.drawable.ic_nav_attendance,
+                    isSelected = localSelectedTab == 1,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        isThemeExpanded = false
+                        localSelectedTab = 1
+                        onTabSelected(1)
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
                 val isElectionLocked = !isGateOpen
                 DrawerNavItem(
                     label = "Election portal",
                     iconRes = R.drawable.ic_people,
-                    isSelected = localSelectedTab == 1,
+                    isSelected = localSelectedTab == 2,
                     isLocked = isElectionLocked,
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -248,8 +262,8 @@ fun StudentPortalDrawerContent(
                         if (isElectionLocked) {
                             onLockedItemClicked()
                         } else {
-                            localSelectedTab = 1
-                            onTabSelected(1)
+                            localSelectedTab = 2
+                            onTabSelected(2)
                         }
                     }
                 )
@@ -259,12 +273,12 @@ fun StudentPortalDrawerContent(
                 DrawerNavItem(
                     label = "My profile",
                     iconRes = R.drawable.ic_nav_profile,
-                    isSelected = localSelectedTab == 2,
+                    isSelected = localSelectedTab == 3,
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         isThemeExpanded = false
-                        localSelectedTab = 2
-                        onTabSelected(2)
+                        localSelectedTab = 3
+                        onTabSelected(3)
                     }
                 )
 

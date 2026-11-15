@@ -80,9 +80,12 @@ fun ElectionTab(
         }
     }
 
+    val screenBg = if (isDark) Color(0xFF0A0E1A) else Color(0xFFEAF2FF)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(screenBg)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {

@@ -100,6 +100,7 @@ fun ProfileTab(
     onUpdateCurrentTerm: (String) -> Unit = {},
     onSecuritySettings: () -> Unit = {},
     onCheckUpdate: () -> Unit = {},
+    onNavigateToAttendance: () -> Unit = {},
     onSignOut: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
@@ -153,7 +154,7 @@ fun ProfileTab(
     val dynamicAttendancePct = if (evaluatedClasses.isNotEmpty()) {
         ((attendedClasses.size.toFloat() / evaluatedClasses.size) * 100).toInt()
     } else {
-        100
+        0
     }
 
     if (showCgpaDialog) {
@@ -799,9 +800,12 @@ fun ProfileTab(
         )
     }
 
+    val screenBg = if (isDark) Color(0xFF0A0E1A) else Color(0xFFEAF2FF)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(screenBg)
             .verticalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -933,23 +937,25 @@ fun ProfileTab(
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
-                    ) {
-                        Box(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = if (profile.department.contains("CSE", ignoreCase = true)) "Department of CSE, BUBT" else profile.department,
-                                fontFamily = PlusJakartaSansFontFamily,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
+                    val isDark = isSystemInDarkTheme()
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(if (isDark) Color(0xFF0D3B24) else Color(0xFFDCFCE7))
+                            .border(
+                                1.dp,
+                                if (isDark) Color(0xFF15803D).copy(alpha = 0.5f) else Color(0xFFBBF7D0),
+                                CircleShape
                             )
-                        }
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "Verified · Locked",
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color(0xFF4ADE80) else Color(0xFF166534)
+                        )
                     }
                 }
 
@@ -993,7 +999,7 @@ fun ProfileTab(
 
         // Card 2: Overview & Academic Details
         DesignCard(padding = 20.dp) {
-            val progress = dynamicAttendancePct / 100f
+            val progress = if (evaluatedClasses.isNotEmpty()) dynamicAttendancePct / 100f else 0f
             val animatedProgress by animateFloatAsState(
                 targetValue = progress,
                 animationSpec = tween(durationMillis = 600)
@@ -1003,49 +1009,21 @@ fun ProfileTab(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Verification status",
-                        fontFamily = PlusJakartaSansFontFamily,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    val isDark = isSystemInDarkTheme()
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(if (isDark) Color(0xFF0D3B24) else Color(0xFFDCFCE7))
-                            .border(
-                                1.dp,
-                                if (isDark) Color(0xFF15803D).copy(alpha = 0.5f) else Color(0xFFBBF7D0),
-                                CircleShape
-                            )
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "Verified · Locked",
-                            fontFamily = PlusJakartaSansFontFamily,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDark) Color(0xFF4ADE80) else Color(0xFF166534)
-                        )
-                    }
-                }
-
-                KeyValueRow(
-                    key = "Total enrolled courses",
-                    value = "${maxOf(6, allClasses.map { it.courseName }.distinct().size)}",
-                    valueColor = MaterialTheme.colorScheme.onSurface
+                Text(
+                    text = "Academic Overview",
+                    fontFamily = PlusJakartaSansFontFamily,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
+                // 1st: Weekly Attendance overview
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onNavigateToAttendance() }
+                        .padding(vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     KeyValueRow(
@@ -1053,9 +1031,9 @@ fun ProfileTab(
                         value = if (evaluatedClasses.isNotEmpty()) {
                             "$dynamicAttendancePct% (${if (dynamicAttendancePct >= 80) "Excellent" else if (dynamicAttendancePct >= 60) "Good" else "Needs Attention"})"
                         } else {
-                            "100% (Weekly Reset)"
+                            "0% (0/0 classes)"
                         },
-                        valueColor = if (dynamicAttendancePct >= 80) Color(0xFF16A34A) else if (dynamicAttendancePct >= 60) Color(0xFF3B82F6) else Color(0xFFDC2626)
+                        valueColor = if (evaluatedClasses.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else if (dynamicAttendancePct >= 80) Color(0xFF16A34A) else if (dynamicAttendancePct >= 60) Color(0xFF3B82F6) else Color(0xFFDC2626)
                     )
                     LinearProgressIndicator(
                         progress = { animatedProgress },
@@ -1075,7 +1053,7 @@ fun ProfileTab(
                             text = if (evaluatedClasses.isNotEmpty()) {
                                 "${attendedClasses.size} attended · ${missedClasses.size} missed (${evaluatedClasses.size} evaluated)"
                             } else {
-                                "No class time passed yet this week"
+                                "New week (Sunday start) · 0/0 classes"
                             },
                             fontFamily = PlusJakartaSansFontFamily,
                             fontSize = 11.5.sp,
@@ -1083,7 +1061,7 @@ fun ProfileTab(
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
                         )
                         Text(
-                            text = "Resets weekly",
+                            text = "Resets Sunday",
                             fontFamily = PlusJakartaSansFontFamily,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Normal,
@@ -1092,7 +1070,52 @@ fun ProfileTab(
                     }
                 }
 
-                // Interactive CGPA Row
+                // 2nd: Current Term
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { showTermDialog = true }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Current Term",
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = profile.currentTerm.ifBlank { "Winter 2026 (Year 2)" },
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit Term",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                // 3rd: Total enrolled courses
+                val dynamicCourseCount = computeUniqueCoursesCount(classMap)
+                KeyValueRow(
+                    key = "Total enrolled courses",
+                    value = "$dynamicCourseCount",
+                    valueColor = MaterialTheme.colorScheme.onSurface
+                )
+
+                // 4th: CGPA (current)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1170,7 +1193,7 @@ fun ProfileTab(
             }
         }
 
-        // Card: Academic Advisor & Term Info
+        // Card: Academic Advisor Info
         DesignCard(padding = 20.dp) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -1182,7 +1205,7 @@ fun ProfileTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Academic Advisor & Term",
+                        text = "Academic Advisor",
                         fontFamily = PlusJakartaSansFontFamily,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
@@ -1220,42 +1243,6 @@ fun ProfileTab(
                             fontFamily = PlusJakartaSansFontFamily,
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                // Interactive Current Term Row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { showTermDialog = true }
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Current Term",
-                        fontFamily = PlusJakartaSansFontFamily,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = profile.currentTerm,
-                            fontFamily = PlusJakartaSansFontFamily,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit Term",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
@@ -1448,79 +1435,38 @@ fun ProfileTab(
             }
         }
 
-        // Card 3: Action Buttons (Security settings, Log out)
-        DesignCard(padding = 20.dp) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                // Security settings
-                OutlinedButton(
-                    onClick = onSecuritySettings,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = Color(0xFF3B82F6)
+        // Card 3: Security Settings Action
+        DesignCard(padding = 16.dp) {
+            OutlinedButton(
+                onClick = onSecuritySettings,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = Color(0xFF3B82F6)
+                )
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = Color(0xFF3B82F6),
+                        modifier = Modifier.size(20.dp)
                     )
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            tint = Color(0xFF3B82F6),
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Security settings",
-                            fontFamily = PlusJakartaSansFontFamily,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF3B82F6)
-                        )
-                    }
-                }
-
-                // Log out Danger Button (Theme-aware Danger styling)
-                val dangerBg = if (isDark) Color(0xFF450A0A) else Color(0xFFFEE2E2)
-                val dangerText = if (isDark) Color(0xFFF87171) else Color(0xFFDC2626)
-                val dangerStroke = if (isDark) Color(0xFF991B1B) else Color(0xFFFCA5A5)
-
-                Button(
-                    onClick = onSignOut,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = dangerBg,
-                        contentColor = dangerText
-                    ),
-                    border = BorderStroke(1.5.dp, dangerStroke)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Logout,
-                            contentDescription = null,
-                            tint = dangerText,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Log out",
-                            fontFamily = PlusJakartaSansFontFamily,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = dangerText
-                        )
-                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Security settings",
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF3B82F6)
+                    )
                 }
             }
         }

@@ -271,9 +271,12 @@ fun RoutineTab(
         }
     }
 
+    val screenBg = if (isDark) Color(0xFF0A0E1A) else Color(0xFFEAF2FF)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(screenBg)
             .verticalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
