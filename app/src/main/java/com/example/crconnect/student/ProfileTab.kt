@@ -497,7 +497,7 @@ fun ProfileTab(
                                     letterSpacing = 0.5.sp
                                 )
                                 Text(
-                                    text = profile.email.ifBlank { "student@bubt.edu.bd" },
+                                    text = profile.email.ifBlank { "student@gmail.com" },
                                     fontFamily = PlusJakartaSansFontFamily,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
@@ -926,7 +926,7 @@ fun ProfileTab(
                     )
 
                     Text(
-                        text = profile.email.ifBlank { "student@bubt.edu.bd" },
+                        text = profile.email.ifBlank { "student@gmail.com" },
                         fontFamily = PlusJakartaSansFontFamily,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,

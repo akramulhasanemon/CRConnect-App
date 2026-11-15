@@ -3,6 +3,10 @@ package com.example.crconnect.student
 import android.content.Context
 import android.content.SharedPreferences
 import com.example.crconnect.SessionManager
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -23,6 +27,21 @@ class RoutineRepository(private val context: Context) {
             email.isNotBlank() -> email
             id.isNotBlank() -> id
             else -> ""
+        }
+    }
+
+    fun getAuthenticatedOrSessionUid(): String {
+        val authUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+        if (!authUid.isNullOrBlank()) {
+            return authUid
+        }
+        val session = SessionManager(context)
+        val id = session.userID
+        val email = session.userEmail
+        return when {
+            id.isNotBlank() && id != "--" && !id.contains("@") -> id.replace(Regex("[^a-zA-Z0-9_]"), "_")
+            email.isNotBlank() -> email.replace(Regex("[^a-zA-Z0-9_]"), "_")
+            else -> "guest"
         }
     }
 
@@ -82,9 +101,17 @@ class RoutineRepository(private val context: Context) {
 
         if (json.isNullOrBlank()) {
             val storedOwner = prefs.getString(KEY_OWNER_ID, null)
-            if (storedOwner.isNullOrBlank() || currentUserId.isBlank() || storedOwner == currentUserId) {
+            val session = SessionManager(context)
+            val isOwnerMatch = storedOwner.isNullOrBlank() || currentUserId.isBlank() ||
+                    storedOwner == currentUserId ||
+                    storedOwner == session.userID ||
+                    storedOwner == session.userEmail
+            if (isOwnerMatch) {
                 json = prefs.getString(KEY_ENTRIES_JSON, null)
             }
+        }
+        if (json.isNullOrBlank()) {
+            json = prefs.getString(KEY_ENTRIES_JSON, null)
         }
 
         if (json.isNullOrBlank()) return emptyList()
@@ -179,6 +206,28 @@ class RoutineRepository(private val context: Context) {
         }
     }
 
+    fun getDateRangeForWeekKey(weekKey: String): String {
+        val parts = weekKey.split("_W")
+        if (parts.size == 2) {
+            val year = parts[0].toIntOrNull()
+            val week = parts[1].toIntOrNull()
+            if (year != null && week != null) {
+                val cal = Calendar.getInstance().apply {
+                    firstDayOfWeek = Calendar.SUNDAY
+                    set(Calendar.YEAR, year)
+                    set(Calendar.WEEK_OF_YEAR, week)
+                    set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
+                }
+                return getSundayWeekDateRange(cal)
+            }
+        }
+        val fallbackCal = Calendar.getInstance().apply {
+            firstDayOfWeek = Calendar.SUNDAY
+            add(Calendar.WEEK_OF_YEAR, -1)
+        }
+        return getSundayWeekDateRange(fallbackCal)
+    }
+
     fun checkAndResetWeeklyAttendance(): Boolean {
         val currentWeek = getCurrentWeekKey()
         val currentUserId = getCurrentUserId().replace(Regex("[^a-zA-Z0-9_]"), "_")
@@ -198,11 +247,7 @@ class RoutineRepository(private val context: Context) {
                 }
             } else null
 
-            val prevCal = Calendar.getInstance().apply {
-                firstDayOfWeek = Calendar.SUNDAY
-                add(Calendar.WEEK_OF_YEAR, -1)
-            }
-            val prevDateRange = getSundayWeekDateRange(prevCal)
+            val prevDateRange = getDateRangeForWeekKey(lastWeek)
 
             val archiveToSave = if (previousArchive != null) {
                 previousArchive.copy(
@@ -304,9 +349,17 @@ class RoutineRepository(private val context: Context) {
         }
         prefs.edit().putString(key, gson.toJson(currentList)).apply()
 
-        // Sync to Firebase Firestore
-        val rawUid = getCurrentUserId()
+        // Sync to Firebase Realtime Database (Primary) & Firestore (Secondary)
+        val rawUid = getAuthenticatedOrSessionUid()
         if (rawUid.isNotBlank() && rawUid != "guest") {
+            try {
+                val rtdbRef = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com")
+                    .getReference("crconnect_db")
+                rtdbRef.child("users").child(rawUid).child("attendance_history").child(archive.weekKey).setValue(archive)
+            } catch (e: Exception) {
+                // Silently fallback to persistent local prefs
+            }
+
             try {
                 FirebaseFirestore.getInstance()
                     .collection("users")
@@ -321,11 +374,55 @@ class RoutineRepository(private val context: Context) {
     }
 
     fun syncAttendanceArchivesFromFirestore(onComplete: (List<WeeklyAttendanceArchive>) -> Unit = {}) {
-        val rawUid = getCurrentUserId()
+        val rawUid = getAuthenticatedOrSessionUid()
         if (rawUid.isBlank() || rawUid == "guest") {
             onComplete(getAttendanceArchives())
             return
         }
+
+        // 1. Primary Check: Firebase Realtime Database
+        try {
+            val rtdbRef = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com")
+                .getReference("crconnect_db")
+            rtdbRef.child("users").child(rawUid).child("attendance_history")
+                .addListenerForSingleValueEvent(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        if (snapshot.exists() && snapshot.childrenCount > 0) {
+                            val rtdbList = mutableListOf<WeeklyAttendanceArchive>()
+                            for (child in snapshot.children) {
+                                val item = child.getValue(WeeklyAttendanceArchive::class.java)
+                                if (item != null) rtdbList.add(item)
+                            }
+                            if (rtdbList.isNotEmpty()) {
+                                val localList = getAttendanceArchives().toMutableList()
+                                for (remote in rtdbList) {
+                                    if (localList.none { it.weekKey == remote.weekKey }) {
+                                        localList.add(remote)
+                                    }
+                                }
+                                localList.sortByDescending { it.weekKey }
+                                val currentUserId = getCurrentUserId().replace(Regex("[^a-zA-Z0-9_]"), "_")
+                                val key = KEY_ATTENDANCE_HISTORY_PREFIX + currentUserId
+                                prefs.edit().putString(key, gson.toJson(localList)).apply()
+                                onComplete(localList)
+                                return
+                            }
+                        }
+
+                        // 2. Secondary Check: Firestore
+                        checkFirestoreArchives(rawUid, onComplete)
+                    }
+
+                    override fun onCancelled(error: DatabaseError) {
+                        checkFirestoreArchives(rawUid, onComplete)
+                    }
+                })
+        } catch (e: Exception) {
+            checkFirestoreArchives(rawUid, onComplete)
+        }
+    }
+
+    private fun checkFirestoreArchives(rawUid: String, onComplete: (List<WeeklyAttendanceArchive>) -> Unit) {
         try {
             FirebaseFirestore.getInstance()
                 .collection("users")

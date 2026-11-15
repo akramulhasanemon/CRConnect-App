@@ -55,6 +55,8 @@ class StudentPortalViewModel : ViewModel() {
 
     private var dbRef: DatabaseReference? = null
     private var firestoreRegistration: ListenerRegistration? = null
+    private var rtdbRoutineListener: ValueEventListener? = null
+    private var rtdbRoutineRef: DatabaseReference? = null
 
     private var sanitizedDept: String = "Dept_of_CSE"
     private var sanitizedSec: String = "6"
@@ -126,7 +128,7 @@ class StudentPortalViewModel : ViewModel() {
 
         val profileModel = UserProfileModel(
             name = studentName,
-            email = session.userEmail.ifBlank { "student@bubt.edu.bd" },
+            email = session.userEmail.ifBlank { "student@gmail.com" },
             studentId = validStudentId,
             intake = session.userIntake.ifBlank { "--" },
             section = rawSec,
@@ -207,7 +209,17 @@ class StudentPortalViewModel : ViewModel() {
             val attendanceMap = context?.let { RoutineRepository(it).getWeeklyAttendanceMap() } ?: emptyMap()
 
             for (entry in entries) {
-                val dayIdx = daysList.indexOfFirst { it.equals(entry.day, ignoreCase = true) }
+                val normDay = when {
+                    entry.day.contains("SAT", ignoreCase = true) -> "SAT"
+                    entry.day.contains("SUN", ignoreCase = true) -> "SUN"
+                    entry.day.contains("MON", ignoreCase = true) -> "MON"
+                    entry.day.contains("TUE", ignoreCase = true) -> "TUE"
+                    entry.day.contains("WED", ignoreCase = true) -> "WED"
+                    entry.day.contains("TH", ignoreCase = true) -> "THR"
+                    entry.day.contains("FRI", ignoreCase = true) -> "FRI"
+                    else -> entry.day.trim().uppercase(Locale.ROOT)
+                }
+                val dayIdx = daysList.indexOfFirst { it.equals(normDay, ignoreCase = true) }
                 val targetIdx = if (dayIdx != -1) dayIdx else 0
                 val timeSlot = "${entry.startTime} - ${entry.endTime}"
                 val courseDisplay = if (entry.faculty.isNotBlank() && entry.faculty != "TBA" && !entry.course.contains("(")) {
@@ -254,57 +266,214 @@ class StudentPortalViewModel : ViewModel() {
     private fun loadFirestoreRoutineToCache(context: Context) {
         try {
             val session = SessionManager(context)
-            val uid = FirebaseAuth.getInstance().currentUser?.uid
-                ?: session.userID.ifBlank { return }
+            val authUid = FirebaseAuth.getInstance().currentUser?.uid
+            val uid = if (!authUid.isNullOrBlank()) authUid else session.userID.ifBlank { "" }
 
-            if (uid.isBlank()) return
-
+            val rtdb = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com")
+            val rtdbRef = rtdb.getReference("crconnect_db")
             val db = FirebaseFirestore.getInstance()
-            db.collection("users")
-                .document(uid)
-                .collection("routine")
-                .get()
-                .addOnSuccessListener { snapshot ->
-                    if (snapshot != null && !snapshot.isEmpty) {
-                        val entries = mutableListOf<ClassEntry>()
-                        for (doc in snapshot.documents) {
-                            val day = doc.getString("day") ?: ""
-                            val course = doc.getString("courseCode") ?: doc.getString("subject") ?: ""
-                            val faculty = doc.getString("faculty") ?: doc.getString("teacher") ?: "TBA"
-                            val room = doc.getString("room") ?: "TBA"
-                            val startTime = doc.getString("startTime") ?: "08:15 AM"
-                            val endTime = doc.getString("endTime") ?: "09:45 AM"
-                            val intake = doc.getString("intake") ?: rawIntake
-                            val section = doc.getString("section") ?: rawSec
-                            val needsReview = doc.getBoolean("needsReview") ?: false
+            val deptKey = sanitizeDepartment(session.userDept.ifBlank { rawDept })
+            val rawDeptKey = getSanitizedKey(session.userDept.ifBlank { rawDept })
+            val intakeKey = getSanitizedKey(session.userIntake.ifBlank { rawIntake })
+            val secKey = sanitizeSection(session.userSection.ifBlank { rawSec })
+            val rawSecKey = getSanitizedKey(session.userSection.ifBlank { rawSec })
 
-                            if (day.isNotBlank() && course.isNotBlank()) {
-                                entries.add(
-                                    ClassEntry(
-                                        day = day,
-                                        course = course,
-                                        faculty = faculty,
-                                        room = room,
-                                        startTime = startTime,
-                                        endTime = endTime,
-                                        intake = intake,
-                                        section = section,
-                                        needsReview = needsReview
-                                    )
-                                )
-                            }
-                        }
-
-                        if (entries.isNotEmpty()) {
-                            val repo = RoutineRepository(context)
-                            repo.replaceClassEntries(entries)
-                            loadRoutineEntriesIntoState(entries, context)
+            fun parseRtdbSnapshotToEntries(snapshot: DataSnapshot): List<ClassEntry> {
+                val list = mutableListOf<ClassEntry>()
+                for (child in snapshot.children) {
+                    val day = child.child("day").getValue(String::class.java) ?: ""
+                    val course = child.child("courseCode").getValue(String::class.java)
+                        ?: child.child("course").getValue(String::class.java)
+                        ?: child.child("subject").getValue(String::class.java) ?: ""
+                    val faculty = child.child("faculty").getValue(String::class.java)
+                        ?: child.child("teacher").getValue(String::class.java) ?: "TBA"
+                    val room = child.child("room").getValue(String::class.java) ?: "TBA"
+                    var startTime = child.child("startTime").getValue(String::class.java) ?: "08:15 AM"
+                    var endTime = child.child("endTime").getValue(String::class.java) ?: "09:45 AM"
+                    val timeSlot = child.child("timeSlot").getValue(String::class.java)
+                    if (timeSlot != null && timeSlot.contains("-")) {
+                        val parts = timeSlot.split("-")
+                        if (parts.size == 2) {
+                            startTime = parts[0].trim()
+                            endTime = parts[1].trim()
                         }
                     }
+                    val intake = child.child("intake").getValue(String::class.java) ?: rawIntake
+                    val section = child.child("section").getValue(String::class.java) ?: rawSec
+                    val needsReview = child.child("needsReview").getValue(Boolean::class.java) ?: false
+
+                    if (day.isNotBlank() && course.isNotBlank()) {
+                        list.add(
+                            ClassEntry(
+                                day = day,
+                                course = course,
+                                faculty = faculty,
+                                room = room,
+                                startTime = startTime,
+                                endTime = endTime,
+                                intake = intake,
+                                section = section,
+                                needsReview = needsReview
+                            )
+                        )
+                    }
                 }
-                .addOnFailureListener { e ->
-                    Log.e("StudentPortalViewModel", "Error loading routine from Firestore backup", e)
+                return list
+            }
+
+            fun parseDocsToEntries(docs: List<com.google.firebase.firestore.DocumentSnapshot>): List<ClassEntry> {
+                val list = mutableListOf<ClassEntry>()
+                for (doc in docs) {
+                    val day = doc.getString("day") ?: ""
+                    val course = doc.getString("courseCode") ?: doc.getString("subject") ?: ""
+                    val faculty = doc.getString("faculty") ?: doc.getString("teacher") ?: "TBA"
+                    val room = doc.getString("room") ?: "TBA"
+                    var startTime = doc.getString("startTime") ?: "08:15 AM"
+                    var endTime = doc.getString("endTime") ?: "09:45 AM"
+                    val timeSlot = doc.getString("timeSlot")
+                    if (timeSlot != null && timeSlot.contains("-")) {
+                        val parts = timeSlot.split("-")
+                        if (parts.size == 2) {
+                            startTime = parts[0].trim()
+                            endTime = parts[1].trim()
+                        }
+                    }
+                    val intake = doc.getString("intake") ?: rawIntake
+                    val section = doc.getString("section") ?: rawSec
+                    val needsReview = doc.getBoolean("needsReview") ?: false
+
+                    if (day.isNotBlank() && course.isNotBlank()) {
+                        list.add(
+                            ClassEntry(
+                                day = day,
+                                course = course,
+                                faculty = faculty,
+                                room = room,
+                                startTime = startTime,
+                                endTime = endTime,
+                                intake = intake,
+                                section = section,
+                                needsReview = needsReview
+                            )
+                        )
+                    }
                 }
+                return list
+            }
+
+            fun applyLoadedEntries(entries: List<ClassEntry>) {
+                if (entries.isNotEmpty()) {
+                    val repo = RoutineRepository(context)
+                    repo.replaceClassEntries(entries)
+                    loadRoutineEntriesIntoState(entries, context)
+                }
+            }
+
+            // Fallback: load section's central schedule if personal routine is empty
+            fun loadSectionScheduleFallback() {
+                // First try RTDB section schedule
+                rtdbRef.child("routines").child(deptKey).child(intakeKey).child(secKey).child("schedule")
+                    .addListenerForSingleValueEvent(object : ValueEventListener {
+                        override fun onDataChange(snapshot: DataSnapshot) {
+                            if (snapshot.exists() && snapshot.childrenCount > 0) {
+                                val entries = parseRtdbSnapshotToEntries(snapshot)
+                                if (entries.isNotEmpty()) {
+                                    applyLoadedEntries(entries)
+                                    return
+                                }
+                            }
+                            // Also try RTDB sections/{deptKey}/{secKey}/schedule
+                            rtdbRef.child("sections").child(deptKey).child(secKey).child("schedule")
+                                .addListenerForSingleValueEvent(object : ValueEventListener {
+                                    override fun onDataChange(sSnapshot: DataSnapshot) {
+                                        if (sSnapshot.exists() && sSnapshot.childrenCount > 0) {
+                                            val entries = parseRtdbSnapshotToEntries(sSnapshot)
+                                            if (entries.isNotEmpty()) {
+                                                applyLoadedEntries(entries)
+                                                return
+                                            }
+                                        }
+                                        // Finally try Firestore if available
+                                        try {
+                                            db.collection("routines")
+                                                .document(rawDeptKey)
+                                                .collection(intakeKey)
+                                                .document(rawSecKey)
+                                                .collection("schedule")
+                                                .get()
+                                                .addOnSuccessListener { secSnapshot ->
+                                                    if (secSnapshot != null && !secSnapshot.isEmpty) {
+                                                        val entries = parseDocsToEntries(secSnapshot.documents)
+                                                        applyLoadedEntries(entries)
+                                                    }
+                                                }
+                                                .addOnFailureListener { e ->
+                                                    Log.d("StudentPortalViewModel", "Firestore section schedule offline: ${e.message}")
+                                                }
+                                        } catch (e: Exception) {
+                                            // Silently handle
+                                        }
+                                    }
+                                    override fun onCancelled(error: DatabaseError) {}
+                                })
+                        }
+                        override fun onCancelled(error: DatabaseError) {}
+                    })
+            }
+
+            // 1. Primary & Candidate User Documents from RTDB (strictly sanitized for RTDB paths)
+            val candidateUserIds = mutableListOf<String>()
+            val idKey = session.userID.trim()
+            if (idKey.isNotBlank() && idKey != "--") {
+                val sanitizedId = idKey.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                if (sanitizedId.isNotBlank() && !candidateUserIds.contains(sanitizedId)) {
+                    candidateUserIds.add(sanitizedId)
+                }
+            }
+            if (!authUid.isNullOrBlank()) {
+                val sanitizedAuthUid = authUid.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                if (sanitizedAuthUid.isNotBlank() && !candidateUserIds.contains(sanitizedAuthUid)) {
+                    candidateUserIds.add(sanitizedAuthUid)
+                }
+            }
+            val emailKey = session.userEmail.trim()
+            if (emailKey.isNotBlank()) {
+                val sanitizedEmail = emailKey.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                if (sanitizedEmail.isNotBlank() && !candidateUserIds.contains(sanitizedEmail)) {
+                    candidateUserIds.add(sanitizedEmail)
+                }
+            }
+
+            fun tryNextCandidateRtdb(index: Int) {
+                if (index >= candidateUserIds.size) {
+                    loadSectionScheduleFallback()
+                    return
+                }
+                val currentTargetId = candidateUserIds[index]
+                rtdbRef.child("users").child(currentTargetId).child("routine")
+                    .addListenerForSingleValueEvent(object : ValueEventListener {
+                        override fun onDataChange(snapshot: DataSnapshot) {
+                            if (snapshot.exists() && snapshot.childrenCount > 0) {
+                                val entries = parseRtdbSnapshotToEntries(snapshot)
+                                if (entries.isNotEmpty()) {
+                                    applyLoadedEntries(entries)
+                                    return
+                                }
+                            }
+                            tryNextCandidateRtdb(index + 1)
+                        }
+
+                        override fun onCancelled(error: DatabaseError) {
+                            tryNextCandidateRtdb(index + 1)
+                        }
+                    })
+            }
+
+            if (candidateUserIds.isNotEmpty()) {
+                tryNextCandidateRtdb(0)
+            } else {
+                loadSectionScheduleFallback()
+            }
         } catch (e: Exception) {
             Log.e("StudentPortalViewModel", "Error in loadFirestoreRoutineToCache", e)
         }
@@ -637,32 +806,30 @@ class StudentPortalViewModel : ViewModel() {
 
     private fun setupFirestoreRoutines() {
         try {
-            val db = FirebaseFirestore.getInstance()
-            val deptKey = getSanitizedKey(rawDept)
+            val rtdb = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com")
+            val rtdbRoot = rtdb.getReference("crconnect_db")
+            val deptKey = sanitizeDepartment(rawDept)
             val intakeKey = getSanitizedKey(rawIntake)
-            val secKey = getSanitizedKey(rawSec)
+            val secKey = sanitizeSection(rawSec)
 
-            firestoreRegistration?.remove()
-            firestoreRegistration = db.collection("routines")
-                .document(deptKey)
-                .collection(intakeKey)
-                .document(secKey)
-                .collection("schedule")
-                .addSnapshotListener { querySnapshot, error ->
-                    if (error != null || querySnapshot == null || querySnapshot.isEmpty) {
-                        Log.d("StudentPortalViewModel", "Firestore schedule empty/offline, keeping local routine")
-                        return@addSnapshotListener
-                    }
-
+            // 1. RTDB Realtime Routine Listener (Primary)
+            rtdbRoutineListener?.let { rtdbRoutineRef?.removeEventListener(it) }
+            rtdbRoutineRef = rtdbRoot.child("routines").child(deptKey).child(intakeKey).child(secKey).child("schedule")
+            rtdbRoutineListener = object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    if (!snapshot.exists() || snapshot.childrenCount == 0L) return
                     val daysList = listOf("SAT", "SUN", "MON", "TUE", "WED", "THR", "FRI")
                     val classMapMutable = mutableMapOf<Int, MutableList<ClassModel>>()
 
-                    for (doc in querySnapshot.documents) {
-                        val dayStr = doc.getString("day") ?: continue
-                        val courseCode = doc.getString("courseCode") ?: doc.getString("subject") ?: continue
-                        val faculty = doc.getString("faculty") ?: doc.getString("teacher") ?: "TBA"
-                        val roomStr = doc.getString("room") ?: "TBA"
-                        val timeSlot = doc.getString("timeSlot") ?: "08:15 AM - 09:45 AM"
+                    for (child in snapshot.children) {
+                        val dayStr = child.child("day").getValue(String::class.java) ?: continue
+                        val courseCode = child.child("courseCode").getValue(String::class.java)
+                            ?: child.child("course").getValue(String::class.java)
+                            ?: child.child("subject").getValue(String::class.java) ?: continue
+                        val faculty = child.child("faculty").getValue(String::class.java)
+                            ?: child.child("teacher").getValue(String::class.java) ?: "TBA"
+                        val roomStr = child.child("room").getValue(String::class.java) ?: "TBA"
+                        val timeSlot = child.child("timeSlot").getValue(String::class.java) ?: "08:15 AM - 09:45 AM"
 
                         val dayIndex = daysList.indexOfFirst { it.equals(dayStr, ignoreCase = true) }
                         if (dayIndex == -1) continue
@@ -676,7 +843,7 @@ class StudentPortalViewModel : ViewModel() {
                         val roomDisplayName = if (roomStr.startsWith("Room") || roomStr.startsWith("TBA")) roomStr else "Room $roomStr"
 
                         val classItem = ClassModel(
-                            id = doc.id,
+                            id = child.key ?: "${dayStr}_${courseCode}",
                             timeSlot = timeSlot,
                             courseName = courseDisplayName,
                             room = roomDisplayName
@@ -703,8 +870,35 @@ class StudentPortalViewModel : ViewModel() {
                         }
                     }
                 }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.d("StudentPortalViewModel", "RTDB routine listener cancelled: ${error.message}")
+                }
+            }
+            rtdbRoutineRef?.addValueEventListener(rtdbRoutineListener as ValueEventListener)
+
+            // 2. Firestore Listener as secondary fallback
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val rawDeptKey = getSanitizedKey(rawDept)
+                val rawSecKey = getSanitizedKey(rawSec)
+
+                firestoreRegistration?.remove()
+                firestoreRegistration = db.collection("routines")
+                    .document(rawDeptKey)
+                    .collection(intakeKey)
+                    .document(rawSecKey)
+                    .collection("schedule")
+                    .addSnapshotListener { querySnapshot, error ->
+                        if (error != null || querySnapshot == null || querySnapshot.isEmpty) {
+                            return@addSnapshotListener
+                        }
+                    }
+            } catch (e: Exception) {
+                // Silently handle Firestore permissions
+            }
         } catch (e: Exception) {
-            Log.e("StudentPortalViewModel", "Error setting up Firestore routines", e)
+            Log.e("StudentPortalViewModel", "Error setting up routines listener", e)
         }
     }
 
@@ -1016,18 +1210,42 @@ class StudentPortalViewModel : ViewModel() {
         repo.clearEntries()
         RoutineLocalCache.clearRoutineLocally(ctx)
 
-        // 2. Clear Firestore schedule for this dept/intake/section
+        val session = SessionManager(ctx)
+        val deptKey = sanitizeDepartment(session.userDept.ifBlank { rawDept })
+        val rawDeptKey = getSanitizedKey(session.userDept.ifBlank { rawDept })
+        val intakeKey = getSanitizedKey(session.userIntake.ifBlank { rawIntake })
+        val secKey = sanitizeSection(session.userSection.ifBlank { rawSec })
+        val rawSecKey = getSanitizedKey(session.userSection.ifBlank { rawSec })
+        val authUid = FirebaseAuth.getInstance().currentUser?.uid
+
+        // 2. Clear from Firebase Realtime Database (Primary)
+        try {
+            val rtdbRef = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com").getReference("crconnect_db")
+            if (session.userID.isNotBlank() && session.userID != "--") {
+                val rawId = session.userID.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                rtdbRef.child("users").child(rawId).child("routine").removeValue()
+            }
+            if (!authUid.isNullOrBlank()) {
+                val sanitizedAuthUid = authUid.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                rtdbRef.child("users").child(sanitizedAuthUid).child("routine").removeValue()
+            }
+            val emailKey = session.userEmail.trim()
+            if (emailKey.isNotBlank()) {
+                val sanitizedEmail = emailKey.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                rtdbRef.child("users").child(sanitizedEmail).child("routine").removeValue()
+            }
+            rtdbRef.child("routines").child(deptKey).child(intakeKey).child(secKey).child("schedule").removeValue()
+        } catch (e: Exception) {
+            Log.e("StudentPortalViewModel", "Error deleting routine from RTDB", e)
+        }
+
+        // 3. Clear Firestore schedule as secondary
         try {
             val db = FirebaseFirestore.getInstance()
-            val session = SessionManager(ctx)
-            val deptKey = getSanitizedKey(session.userDept.ifBlank { rawDept })
-            val intakeKey = getSanitizedKey(session.userIntake.ifBlank { rawIntake })
-            val secKey = getSanitizedKey(session.userSection.ifBlank { rawSec })
-
             val scheduleRef = db.collection("routines")
-                .document(deptKey)
+                .document(rawDeptKey)
                 .collection(intakeKey)
-                .document(secKey)
+                .document(rawSecKey)
                 .collection("schedule")
 
             scheduleRef.get().addOnSuccessListener { snapshot ->
@@ -1045,7 +1263,7 @@ class StudentPortalViewModel : ViewModel() {
             Log.e("StudentPortalViewModel", "Error in deleteCurrentRoutine", e)
         }
 
-        // 3. Reset UI state schedule days & classMap immediately
+        // 4. Reset UI state schedule days & classMap immediately
         val updatedDays = _uiState.value.scheduleDays.map { day ->
             day.copy(hasClasses = false)
         }
@@ -1062,74 +1280,127 @@ class StudentPortalViewModel : ViewModel() {
 
     private fun saveScannedClassesToFirestore(entries: List<ClassEntry>, context: Context) {
         try {
-            val db = FirebaseFirestore.getInstance()
             val session = SessionManager(context)
-            val deptKey = getSanitizedKey(session.userDept.ifBlank { rawDept })
+            val deptKey = sanitizeDepartment(session.userDept.ifBlank { rawDept })
+            val rawDeptKey = getSanitizedKey(session.userDept.ifBlank { rawDept })
             val intakeKey = getSanitizedKey(session.userIntake.ifBlank { rawIntake })
-            val secKey = getSanitizedKey(session.userSection.ifBlank { rawSec })
-            val uid = FirebaseAuth.getInstance().currentUser?.uid ?: session.userID
+            val secKey = sanitizeSection(session.userSection.ifBlank { rawSec })
+            val rawSecKey = getSanitizedKey(session.userSection.ifBlank { rawSec })
+            val authUid = FirebaseAuth.getInstance().currentUser?.uid
+            val uid = if (!authUid.isNullOrBlank()) authUid else session.userID.ifBlank { "" }
 
             val sortedEntries = entries.sortedBy { startMinutes(it.startTime) }
 
-            // 1. Sync to section schedule routines/{dept}/{intake}/{section}/schedule
-            val scheduleRef = db.collection("routines")
-                .document(deptKey)
-                .collection(intakeKey)
-                .document(secKey)
-                .collection("schedule")
-
-            scheduleRef.get().addOnSuccessListener { snapshot ->
-                val batch = db.batch()
-                for (doc in snapshot.documents) {
-                    batch.delete(doc.reference)
-                }
-                for (entry in sortedEntries) {
-                    val newDocRef = scheduleRef.document()
-                    val docData = hashMapOf(
-                        "courseCode" to entry.course,
-                        "subject" to entry.course,
-                        "faculty" to entry.faculty,
-                        "teacher" to entry.faculty,
-                        "timeSlot" to "${entry.startTime} - ${entry.endTime}",
-                        "room" to entry.room,
-                        "day" to entry.day,
-                        "startTime" to entry.startTime,
-                        "endTime" to entry.endTime
-                    )
-                    batch.set(newDocRef, docData)
-                }
-                batch.commit().addOnFailureListener { e ->
-                    Log.e("StudentPortalViewModel", "Error batch saving scanned classes to Firestore", e)
-                }
-            }.addOnFailureListener { e ->
-                Log.e("StudentPortalViewModel", "Error getting schedule docs for cleanup", e)
+            // 1. Primary Sync: Firebase Realtime Database
+            val rtdbRef = FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com").getReference("crconnect_db")
+            val rtdbEntriesMap = mutableMapOf<String, Any>()
+            for ((idx, entry) in sortedEntries.withIndex()) {
+                val itemKey = "class_${idx}_${entry.day}_${entry.startTime.replace(" ", "").replace(":", "")}"
+                val docData = hashMapOf(
+                    "courseCode" to entry.course,
+                    "subject" to entry.course,
+                    "course" to entry.course,
+                    "faculty" to entry.faculty,
+                    "teacher" to entry.faculty,
+                    "timeSlot" to "${entry.startTime} - ${entry.endTime}",
+                    "room" to entry.room,
+                    "day" to entry.day,
+                    "startTime" to entry.startTime,
+                    "endTime" to entry.endTime,
+                    "intake" to (entry.intake.orEmpty().ifBlank { rawIntake }),
+                    "section" to (entry.section.orEmpty().ifBlank { rawSec }),
+                    "needsReview" to entry.needsReview
+                )
+                rtdbEntriesMap[itemKey] = docData
             }
 
-            // 2. Personal backup to users/{uid}/routine so user's routine reloads automatically on login
-            if (uid.isNotBlank()) {
-                val userRoutineRef = db.collection("users").document(uid).collection("routine")
-                userRoutineRef.get().addOnSuccessListener { userSnapshot ->
-                    val userBatch = db.batch()
-                    for (doc in userSnapshot.documents) {
-                        userBatch.delete(doc.reference)
+            if (session.userID.isNotBlank() && session.userID != "--") {
+                val rawId = session.userID.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                rtdbRef.child("users").child(rawId).child("routine").setValue(rtdbEntriesMap)
+            }
+            if (!authUid.isNullOrBlank()) {
+                val sanitizedAuthUid = authUid.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                rtdbRef.child("users").child(sanitizedAuthUid).child("routine").setValue(rtdbEntriesMap)
+            }
+            val emailKey = session.userEmail.trim()
+            if (emailKey.isNotBlank()) {
+                val sanitizedEmail = emailKey.replace(Regex("[^a-zA-Z0-9_]"), "_")
+                rtdbRef.child("users").child(sanitizedEmail).child("routine").setValue(rtdbEntriesMap)
+            }
+
+            rtdbRef.child("routines").child(deptKey).child(intakeKey).child(secKey).child("schedule").setValue(rtdbEntriesMap)
+
+            // 2. Secondary Sync: Cloud Firestore (with graceful fallback)
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val scheduleRef = db.collection("routines")
+                    .document(rawDeptKey)
+                    .collection(intakeKey)
+                    .document(rawSecKey)
+                    .collection("schedule")
+
+                scheduleRef.get().addOnSuccessListener { snapshot ->
+                    val batch = db.batch()
+                    for (doc in snapshot.documents) {
+                        batch.delete(doc.reference)
                     }
                     for (entry in sortedEntries) {
-                        val newDocRef = userRoutineRef.document()
+                        val newDocRef = scheduleRef.document()
                         val docData = hashMapOf(
                             "courseCode" to entry.course,
                             "subject" to entry.course,
                             "faculty" to entry.faculty,
+                            "teacher" to entry.faculty,
+                            "timeSlot" to "${entry.startTime} - ${entry.endTime}",
                             "room" to entry.room,
                             "day" to entry.day,
                             "startTime" to entry.startTime,
-                            "endTime" to entry.endTime
+                            "endTime" to entry.endTime,
+                            "intake" to (entry.intake.orEmpty().ifBlank { rawIntake }),
+                            "section" to (entry.section.orEmpty().ifBlank { rawSec }),
+                            "needsReview" to entry.needsReview
                         )
-                        userBatch.set(newDocRef, docData)
+                        batch.set(newDocRef, docData)
                     }
-                    userBatch.commit().addOnFailureListener { e ->
-                        Log.e("StudentPortalViewModel", "Error saving user personal routine to Firestore", e)
+                    batch.commit().addOnFailureListener { e ->
+                        Log.d("StudentPortalViewModel", "Firestore batch save offline: ${e.message}")
+                    }
+                }.addOnFailureListener { e ->
+                    Log.d("StudentPortalViewModel", "Firestore schedule cleanup offline: ${e.message}")
+                }
+
+                if (uid.isNotBlank() && uid != "guest") {
+                    val userRoutineRef = db.collection("users").document(uid).collection("routine")
+                    userRoutineRef.get().addOnSuccessListener { userSnapshot ->
+                        val userBatch = db.batch()
+                        for (doc in userSnapshot.documents) {
+                            userBatch.delete(doc.reference)
+                        }
+                        for (entry in sortedEntries) {
+                            val newDocRef = userRoutineRef.document()
+                            val docData = hashMapOf(
+                                "courseCode" to entry.course,
+                                "subject" to entry.course,
+                                "faculty" to entry.faculty,
+                                "teacher" to entry.faculty,
+                                "timeSlot" to "${entry.startTime} - ${entry.endTime}",
+                                "room" to entry.room,
+                                "day" to entry.day,
+                                "startTime" to entry.startTime,
+                                "endTime" to entry.endTime,
+                                "intake" to (entry.intake.orEmpty().ifBlank { rawIntake }),
+                                "section" to (entry.section.orEmpty().ifBlank { rawSec }),
+                                "needsReview" to entry.needsReview
+                            )
+                            userBatch.set(newDocRef, docData)
+                        }
+                        userBatch.commit().addOnFailureListener { e ->
+                            Log.d("StudentPortalViewModel", "Firestore user routine offline: ${e.message}")
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                Log.d("StudentPortalViewModel", "Firestore secondary sync skipped: ${e.message}")
             }
         } catch (e: Exception) {
             Log.e("StudentPortalViewModel", "Error in saveScannedClassesToFirestore", e)
@@ -1515,6 +1786,7 @@ class StudentPortalViewModel : ViewModel() {
         gateControlListener?.let { dbRef?.removeEventListener(it) }
         voterListener?.let { dbRef?.removeEventListener(it) }
         announcementsListener?.let { dbRef?.removeEventListener(it) }
+        rtdbRoutineListener?.let { rtdbRoutineRef?.removeEventListener(it) }
         firestoreRegistration?.remove()
     }
 }
