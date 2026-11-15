@@ -191,6 +191,8 @@ fun StudentPortalScreen(
         ) {
             Scaffold(
                 topBar = {
+                    val isProfileTab = (uiState.selectedTab == 3)
+
                     TopHeader(
                         title = uiState.profile.name.ifBlank { "Student" },
                         name = uiState.profile.name,
@@ -198,18 +200,19 @@ fun StudentPortalScreen(
                         initials = uiState.profile.initials,
                         profileImageUrl = uiState.profile.profileImageUrl,
                         isCr = uiState.isCr,
+                        isProfileTab = isProfileTab,
                         onMenuClick = {
                             coroutineScope.launch { drawerState.open() }
                         },
                         onAvatarClick = {
                             isNavVisible = true
-                            viewModel.selectTab(2) // Profile Tab
+                            viewModel.selectTab(3) // Profile Tab
                         },
                         onSignOutClick = onSignOut
                     )
                 },
                 snackbarHost = { SnackbarHost(snackbarHostState) },
-                containerColor = Color.Transparent
+                containerColor = if (isDark) DarkBackground else Color(0xFFEAF2FF)
             ) { paddingValues ->
                 Box(
                     modifier = Modifier
@@ -223,7 +226,7 @@ fun StudentPortalScreen(
                     ) {
                         val pagerState = rememberPagerState(
                             initialPage = uiState.selectedTab,
-                            pageCount = { 3 }
+                            pageCount = { 4 }
                         )
 
                         LaunchedEffect(uiState.selectedTab) {
@@ -233,8 +236,8 @@ fun StudentPortalScreen(
                         }
 
                         LaunchedEffect(pagerState.currentPage, uiState.isGateOpen) {
-                            if (pagerState.currentPage == 1 && !uiState.isGateOpen) {
-                                val fallbackPage = if (uiState.selectedTab != 1) uiState.selectedTab else 0
+                            if (pagerState.currentPage == 2 && !uiState.isGateOpen) {
+                                val fallbackPage = if (uiState.selectedTab != 2) uiState.selectedTab else 0
                                 pagerState.scrollToPage(fallbackPage)
                                 CustomToast.show(context, "Election is currently locked by teacher")
                             } else if (uiState.selectedTab != pagerState.currentPage) {
@@ -270,11 +273,15 @@ fun StudentPortalScreen(
                                     onToggleAttendance = { classId, state, dayIdx -> viewModel.toggleAttendance(classId, state, dayIdx, context) },
                                     onShowToast = { msg -> viewModel.showToast(msg) }
                                 )
-                                1 -> ElectionTab(
+                                1 -> AttendanceTab(
+                                    uiState = uiState,
+                                    onRefreshHistory = { viewModel.loadAttendanceHistory(context) }
+                                )
+                                2 -> ElectionTab(
                                     uiState = uiState,
                                     onCastVote = { candidateId -> viewModel.castVote(candidateId) }
                                 )
-                                2 -> ProfileTab(
+                                3 -> ProfileTab(
                                     profile = uiState.profile,
                                     uiState = uiState,
                                     classMap = uiState.classMap,
@@ -293,6 +300,7 @@ fun StudentPortalScreen(
                                     onUpdateCurrentTerm = { term -> viewModel.updateCurrentTerm(term, context) },
                                     onSecuritySettings = { isSecurityDialogOpen = true },
                                     onCheckUpdate = { viewModel.checkForAppUpdates(context, forceCheck = true) },
+                                    onNavigateToAttendance = { viewModel.selectTab(1) },
                                     onSignOut = onSignOut
                                 )
                             }

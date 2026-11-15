@@ -24,8 +24,11 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -41,6 +44,14 @@ class StudentPortalViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(StudentPortalUiState())
     val uiState: StateFlow<StudentPortalUiState> = _uiState.asStateFlow()
+
+    val uniqueCourseCount: StateFlow<Int> = _uiState
+        .map { state -> computeUniqueCoursesCount(state.classMap) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = 0
+        )
 
     private var dbRef: DatabaseReference? = null
     private var firestoreRegistration: ListenerRegistration? = null
@@ -157,6 +168,9 @@ class StudentPortalViewModel : ViewModel() {
         }
 
         val repo = RoutineRepository(context)
+        repo.checkAndResetWeeklyAttendance()
+        loadAttendanceHistory(context)
+
         val savedEntries = repo.getClassEntries().filterNot { entry ->
             (entry.course == "CSE 301 · Algorithms" || entry.course == "CSE 305 · Database" || entry.course == "MAT 211 · Numerical Methods") && entry.faculty == "TBA"
         }
@@ -755,6 +769,17 @@ class StudentPortalViewModel : ViewModel() {
         if (context != null) {
             val repo = RoutineRepository(context)
             repo.saveWeeklyAttendanceState(classId, finalState)
+
+            // Calculate & persist current week's live summary
+            val currentMap = _uiState.value.classMap
+            val allClassesWithDay = currentMap.flatMap { (dIdx, classes) -> classes.map { dIdx to it } }
+            val evaluated = allClassesWithDay.filter { (dIdx, item) ->
+                val status = getClassTimingStatus(dIdx, item.timeSlot)
+                status == ClassTimingStatus.PAST || item.attendanceState != null
+            }
+            val attended = evaluated.count { (dIdx, item) -> getEffectiveAttendanceState(dIdx, item) == "attended" }
+            val pct = if (evaluated.isNotEmpty()) ((attended.toFloat() / evaluated.size) * 100).toInt() else 0
+            repo.saveCurrentWeekSummary(attended, evaluated.size, pct)
 
             val courseDisplay = updatedCourseName?.takeIf { it.isNotBlank() } ?: "class"
             val cleanCourse = courseDisplay.split("(").firstOrNull()?.trim() ?: courseDisplay
@@ -1471,6 +1496,16 @@ class StudentPortalViewModel : ViewModel() {
             .addOnFailureListener { e ->
                 showToast("Failed to send reset email: ${e.localizedMessage}")
             }
+    }
+
+    fun loadAttendanceHistory(context: Context) {
+        val repo = RoutineRepository(context)
+        val localArchives = repo.getAttendanceArchives()
+        _uiState.update { it.copy(attendanceArchives = localArchives) }
+
+        repo.syncAttendanceArchivesFromFirestore { updatedList ->
+            _uiState.update { it.copy(attendanceArchives = updatedList) }
+        }
     }
 
     override fun onCleared() {

@@ -3,8 +3,10 @@ package com.example.crconnect.student
 import android.content.Context
 import android.content.SharedPreferences
 import com.example.crconnect.SessionManager
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
@@ -148,28 +150,94 @@ class RoutineRepository(private val context: Context) {
 
     fun getCurrentWeekKey(): String {
         val cal = Calendar.getInstance()
-        cal.firstDayOfWeek = Calendar.SATURDAY
+        cal.firstDayOfWeek = Calendar.SUNDAY
         val year = cal.get(Calendar.YEAR)
         val week = cal.get(Calendar.WEEK_OF_YEAR)
         return "${year}_W${week}"
     }
 
-    fun getWeeklyAttendanceMap(): Map<String, String> {
+    fun getSundayWeekDateRange(calendar: Calendar = Calendar.getInstance()): String {
+        val c = (calendar.clone() as Calendar).apply {
+            firstDayOfWeek = Calendar.SUNDAY
+            set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY)
+        }
+        val startDay = c.get(Calendar.DAY_OF_MONTH)
+        val startMonthStr = SimpleDateFormat("MMM", Locale.US).format(c.time)
+        val startYear = c.get(Calendar.YEAR)
+
+        c.add(Calendar.DAY_OF_YEAR, 6)
+        val endDay = c.get(Calendar.DAY_OF_MONTH)
+        val endMonthStr = SimpleDateFormat("MMM", Locale.US).format(c.time)
+        val endYear = c.get(Calendar.YEAR)
+
+        return if (startMonthStr == endMonthStr && startYear == endYear) {
+            "$startDay–$endDay $startMonthStr $startYear"
+        } else if (startYear == endYear) {
+            "$startDay $startMonthStr – $endDay $endMonthStr $startYear"
+        } else {
+            "$startDay $startMonthStr $startYear – $endDay $endMonthStr $endYear"
+        }
+    }
+
+    fun checkAndResetWeeklyAttendance(): Boolean {
         val currentWeek = getCurrentWeekKey()
         val currentUserId = getCurrentUserId().replace(Regex("[^a-zA-Z0-9_]"), "_")
         val weekKey = KEY_LAST_ATTENDANCE_WEEK + "_" + currentUserId
         val attendanceKey = KEY_ATTENDANCE_PREFIX + currentUserId
+        val statsKey = KEY_CURRENT_WEEK_STATS_PREFIX + currentUserId
 
         val lastWeek = prefs.getString(weekKey, null)
-        if (lastWeek != currentWeek) {
-            // Automatic Weekly Reset!
+        if (lastWeek != null && lastWeek != currentWeek) {
+            // A new Sunday has arrived! Automatically archive previous week's attendance summary
+            val lastStatsJson = prefs.getString(statsKey, null)
+            val previousArchive = if (lastStatsJson != null) {
+                try {
+                    gson.fromJson(lastStatsJson, WeeklyAttendanceArchive::class.java)
+                } catch (e: Exception) {
+                    null
+                }
+            } else null
+
+            val prevCal = Calendar.getInstance().apply {
+                firstDayOfWeek = Calendar.SUNDAY
+                add(Calendar.WEEK_OF_YEAR, -1)
+            }
+            val prevDateRange = getSundayWeekDateRange(prevCal)
+
+            val archiveToSave = if (previousArchive != null) {
+                previousArchive.copy(
+                    weekKey = lastWeek,
+                    dateRange = if (previousArchive.dateRange.isNotBlank()) previousArchive.dateRange else prevDateRange
+                )
+            } else {
+                WeeklyAttendanceArchive(
+                    weekKey = lastWeek,
+                    dateRange = prevDateRange,
+                    attendedClasses = 0,
+                    totalClasses = 0,
+                    percentage = 0
+                )
+            }
+
+            saveAttendanceArchive(archiveToSave)
+
+            // Reset current week's attendance count & records to 0
             prefs.edit()
                 .remove(attendanceKey)
+                .remove(statsKey)
                 .putString(weekKey, currentWeek)
                 .apply()
-            return emptyMap()
+            return true
+        } else if (lastWeek == null) {
+            prefs.edit().putString(weekKey, currentWeek).apply()
         }
+        return false
+    }
 
+    fun getWeeklyAttendanceMap(): Map<String, String> {
+        checkAndResetWeeklyAttendance()
+        val currentUserId = getCurrentUserId().replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val attendanceKey = KEY_ATTENDANCE_PREFIX + currentUserId
         val json = prefs.getString(attendanceKey, null) ?: return emptyMap()
         return try {
             val type = object : TypeToken<Map<String, String>>() {}.type
@@ -198,6 +266,102 @@ class RoutineRepository(private val context: Context) {
             .apply()
     }
 
+    fun saveCurrentWeekSummary(attended: Int, total: Int, percentage: Int) {
+        val currentUserId = getCurrentUserId().replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val statsKey = KEY_CURRENT_WEEK_STATS_PREFIX + currentUserId
+        val dateRange = getSundayWeekDateRange()
+        val summary = WeeklyAttendanceArchive(
+            weekKey = getCurrentWeekKey(),
+            dateRange = dateRange,
+            attendedClasses = attended,
+            totalClasses = total,
+            percentage = percentage
+        )
+        prefs.edit().putString(statsKey, gson.toJson(summary)).apply()
+    }
+
+    fun getAttendanceArchives(): List<WeeklyAttendanceArchive> {
+        val currentUserId = getCurrentUserId().replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val key = KEY_ATTENDANCE_HISTORY_PREFIX + currentUserId
+        val json = prefs.getString(key, null) ?: return emptyList()
+        return try {
+            val type = object : TypeToken<List<WeeklyAttendanceArchive>>() {}.type
+            gson.fromJson(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveAttendanceArchive(archive: WeeklyAttendanceArchive) {
+        val currentUserId = getCurrentUserId().replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val key = KEY_ATTENDANCE_HISTORY_PREFIX + currentUserId
+        val currentList = getAttendanceArchives().toMutableList()
+        val existingIndex = currentList.indexOfFirst { it.weekKey == archive.weekKey }
+        if (existingIndex != -1) {
+            currentList[existingIndex] = archive
+        } else {
+            currentList.add(0, archive)
+        }
+        prefs.edit().putString(key, gson.toJson(currentList)).apply()
+
+        // Sync to Firebase Firestore
+        val rawUid = getCurrentUserId()
+        if (rawUid.isNotBlank() && rawUid != "guest") {
+            try {
+                FirebaseFirestore.getInstance()
+                    .collection("users")
+                    .document(rawUid)
+                    .collection("attendance_history")
+                    .document(archive.weekKey)
+                    .set(archive)
+            } catch (e: Exception) {
+                // Silently fallback to persistent local prefs
+            }
+        }
+    }
+
+    fun syncAttendanceArchivesFromFirestore(onComplete: (List<WeeklyAttendanceArchive>) -> Unit = {}) {
+        val rawUid = getCurrentUserId()
+        if (rawUid.isBlank() || rawUid == "guest") {
+            onComplete(getAttendanceArchives())
+            return
+        }
+        try {
+            FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(rawUid)
+                .collection("attendance_history")
+                .get()
+                .addOnSuccessListener { snapshot ->
+                    val remoteList = mutableListOf<WeeklyAttendanceArchive>()
+                    for (doc in snapshot.documents) {
+                        val item = doc.toObject(WeeklyAttendanceArchive::class.java)
+                        if (item != null) remoteList.add(item)
+                    }
+                    if (remoteList.isNotEmpty()) {
+                        val localList = getAttendanceArchives().toMutableList()
+                        for (remote in remoteList) {
+                            if (localList.none { it.weekKey == remote.weekKey }) {
+                                localList.add(remote)
+                            }
+                        }
+                        localList.sortByDescending { it.weekKey }
+                        val currentUserId = getCurrentUserId().replace(Regex("[^a-zA-Z0-9_]"), "_")
+                        val key = KEY_ATTENDANCE_HISTORY_PREFIX + currentUserId
+                        prefs.edit().putString(key, gson.toJson(localList)).apply()
+                        onComplete(localList)
+                    } else {
+                        onComplete(getAttendanceArchives())
+                    }
+                }
+                .addOnFailureListener {
+                    onComplete(getAttendanceArchives())
+                }
+        } catch (e: Exception) {
+            onComplete(getAttendanceArchives())
+        }
+    }
+
     companion object {
         private const val PREF_NAME = "crconnect_routine_preferences"
         private const val KEY_ENTRIES_JSON = "key_parsed_class_entries"
@@ -205,5 +369,7 @@ class RoutineRepository(private val context: Context) {
         private const val KEY_OWNER_ID = "key_routine_owner_id"
         private const val KEY_ATTENDANCE_PREFIX = "key_weekly_attendance_"
         private const val KEY_LAST_ATTENDANCE_WEEK = "key_last_attendance_week_"
+        private const val KEY_ATTENDANCE_HISTORY_PREFIX = "key_attendance_history_"
+        private const val KEY_CURRENT_WEEK_STATS_PREFIX = "key_current_week_stats_"
     }
 }
