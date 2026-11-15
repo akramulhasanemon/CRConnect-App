@@ -57,6 +57,10 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.firestore.CollectionReference;
 import com.google.firebase.firestore.DocumentReference;
 import com.google.firebase.firestore.DocumentSnapshot;
@@ -1884,6 +1888,38 @@ public class RoutineActivity extends AppCompatActivity {
 
             // Save clean list locally immediately for instant persistence across app restarts
             RoutineLocalCache.saveRoutineLocally(RoutineActivity.this, cleanItems);
+
+            // Save to Firebase Realtime Database
+            try {
+                String uid = getUserUid();
+                if (uid != null && !uid.isEmpty()) {
+                    Map<String, Object> rtdbMap = new HashMap<>();
+                    for (int i = 0; i < cleanItems.size(); i++) {
+                        RoutineClassItem item = cleanItems.get(i);
+                        String key = "class_" + i + "_" + (item.day != null ? item.day : "day");
+                        Map<String, Object> itemMap = new HashMap<>();
+                        itemMap.put("day", item.day);
+                        itemMap.put("subject", item.getDisplayCourseCode());
+                        itemMap.put("courseCode", item.getDisplayCourseCode());
+                        itemMap.put("timeSlot", item.timeSlot);
+                        itemMap.put("startTime", item.startTime);
+                        itemMap.put("endTime", item.endTime);
+                        itemMap.put("room", item.room);
+                        itemMap.put("teacher", item.getDisplayFaculty());
+                        itemMap.put("faculty", item.getDisplayFaculty());
+                        itemMap.put("timestamp", System.currentTimeMillis());
+                        rtdbMap.put(key, itemMap);
+                    }
+                    FirebaseDatabase.getInstance("https://crconnect-58521-default-rtdb.firebaseio.com")
+                            .getReference("crconnect_db")
+                            .child("users")
+                            .child(uid)
+                            .child("routine")
+                            .setValue(rtdbMap);
+                }
+            } catch (Exception e) {
+                Log.e("RoutineActivity", "Error saving to RTDB", e);
+            }
 
             FirebaseFirestore db = FirebaseFirestore.getInstance();
             CollectionReference scheduleRef = db.collection("users")

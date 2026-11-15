@@ -131,7 +131,7 @@ fun computeUniqueCoursesCount(classMap: Map<Int, List<ClassModel>>): Int {
 
 data class UserProfileModel(
     val name: String = "Student",
-    val email: String = "student@bubt.edu.bd",
+    val email: String = "student@gmail.com",
     val studentId: String = "--",
     val intake: String = "--",
     val section: String = "--",
