@@ -3,11 +3,17 @@ package com.example.crconnect.student
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
+import android.view.WindowManager
 import android.widget.ImageView
 import androidx.compose.foundation.Image
 import androidx.compose.runtime.key
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.signature.ObjectKey
@@ -36,6 +42,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -816,12 +823,9 @@ fun ProfileTab(
     }
 
     if (showAcademicOverviewPage) {
-        Dialog(
+        FullScreenSubPageDialog(
             onDismissRequest = { showAcademicOverviewPage = false },
-            properties = DialogProperties(
-                usePlatformDefaultWidth = false,
-                decorFitsSystemWindows = false
-            )
+            isDark = isDark
         ) {
             BackHandler {
                 showAcademicOverviewPage = false
@@ -835,16 +839,7 @@ fun ProfileTab(
             )
             val dynamicCourseCount = computeUniqueCoursesCount(classMap)
 
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .statusBarsPadding()
-                ) {
-                    // Top App Bar
+            // Top App Bar
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1209,18 +1204,13 @@ fun ProfileTab(
 
                         Spacer(modifier = Modifier.height(24.dp))
                     }
-                }
-            }
         }
     }
 
     if (showAdvisorPage) {
-        Dialog(
+        FullScreenSubPageDialog(
             onDismissRequest = { showAdvisorPage = false },
-            properties = DialogProperties(
-                usePlatformDefaultWidth = false,
-                decorFitsSystemWindows = false
-            )
+            isDark = isDark
         ) {
             BackHandler {
                 showAdvisorPage = false
@@ -1229,16 +1219,7 @@ fun ProfileTab(
             val clipboardManager = LocalClipboardManager.current
             val advisorEmail = profile.advisorEmail.ifBlank { "nasrinshipa@bubt.edu.bd" }
 
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .statusBarsPadding()
-                ) {
-                    // Top App Bar
+            // Top App Bar
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1528,33 +1509,19 @@ fun ProfileTab(
 
                         Spacer(modifier = Modifier.height(24.dp))
                     }
-                }
-            }
         }
     }
 
     if (showSettingsPage) {
-        Dialog(
+        FullScreenSubPageDialog(
             onDismissRequest = { showSettingsPage = false },
-            properties = DialogProperties(
-                usePlatformDefaultWidth = false,
-                decorFitsSystemWindows = false
-            )
+            isDark = isDark
         ) {
             BackHandler {
                 showSettingsPage = false
             }
 
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .statusBarsPadding()
-                ) {
-                    // Top App Bar
+            // Top App Bar
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1907,8 +1874,6 @@ fun ProfileTab(
 
                         Spacer(modifier = Modifier.height(24.dp))
                     }
-                }
-            }
         }
     }
 
@@ -2429,5 +2394,68 @@ private fun ThemeOptionButton(
             fontWeight = FontWeight.Bold,
             color = textColor
         )
+    }
+}
+
+@Composable
+private fun FullScreenSubPageDialog(
+    onDismissRequest: () -> Unit,
+    isDark: Boolean,
+    content: @Composable () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismissRequest,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        val view = LocalView.current
+        val dialogWindow = remember(view) {
+            var current: android.view.ViewParent? = view.parent
+            var foundWindow: android.view.Window? = (view as? DialogWindowProvider)?.window
+            while (foundWindow == null && current != null) {
+                if (current is DialogWindowProvider) {
+                    foundWindow = current.window
+                    break
+                }
+                current = current.parent
+            }
+            foundWindow
+        }
+
+        SideEffect {
+            dialogWindow?.let { win ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    win.attributes = win.attributes.apply {
+                        layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    }
+                }
+                WindowCompat.setDecorFitsSystemWindows(win, false)
+                win.statusBarColor = android.graphics.Color.TRANSPARENT
+                win.navigationBarColor = android.graphics.Color.TRANSPARENT
+                win.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    win.isNavigationBarContrastEnforced = false
+                }
+                val insetsController = WindowCompat.getInsetsController(win, win.decorView)
+                insetsController.isAppearanceLightStatusBars = !isDark
+                insetsController.isAppearanceLightNavigationBars = !isDark
+            }
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+            ) {
+                content()
+            }
+        }
     }
 }
