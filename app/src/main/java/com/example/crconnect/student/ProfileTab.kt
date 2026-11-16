@@ -68,6 +68,7 @@ import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SupervisorAccount
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.AlertDialog
@@ -897,7 +898,10 @@ fun ProfileTab(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         // 1. Weekly Attendance overview Card
-                        DesignCard(padding = 20.dp) {
+                        DesignCard(
+                            padding = 20.dp,
+                            onClick = { showAttendanceSubPage = true }
+                        ) {
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -997,41 +1001,76 @@ fun ProfileTab(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                     )
                                 }
+                            }
+                        }
 
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant,
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        // 2. Attendance Records & History Action Card
+                        DesignCard(
+                            onClick = { showAttendanceSubPage = true },
+                            padding = 16.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            showAttendanceSubPage = true
-                                        }
+                                        .size(46.dp)
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.22f else 0.12f),
+                                            shape = RoundedCornerShape(14.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "Open full Attendance records",
-                                            fontFamily = PlusJakartaSansFontFamily,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.Assessment,
+                                        contentDescription = "Attendance Records",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Text(
+                                        text = "Attendance Records & History",
+                                        fontFamily = PlusJakartaSansFontFamily,
+                                        fontSize = 14.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Subject-wise log, calendar & full records",
+                                        fontFamily = PlusJakartaSansFontFamily,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Normal,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.18f else 0.08f),
+                                            shape = CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                        contentDescription = "Open",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
                             }
                         }
 
-                        // 2. Current Term Card
+                        // 3. Current Term Card
                         DesignCard(padding = 20.dp) {
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1092,7 +1131,7 @@ fun ProfileTab(
                             }
                         }
 
-                        // 3. Total Enrolled Courses Card
+                        // 4. Total Enrolled Courses Card
                         DesignCard(padding = 20.dp) {
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1145,7 +1184,7 @@ fun ProfileTab(
                             }
                         }
 
-                        // 4. CGPA (current) Card
+                        // 5. CGPA (current) Card
                         DesignCard(padding = 20.dp) {
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
