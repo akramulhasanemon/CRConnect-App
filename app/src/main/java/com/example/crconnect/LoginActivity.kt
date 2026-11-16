@@ -146,6 +146,41 @@ class LoginActivity : AppCompatActivity() {
 
         // 10. Touch Feedback
         setupHapticFeedback()
+
+        // 11. Screen Entrance Animation
+        playEntranceAnimations()
+    }
+
+    private fun playEntranceAnimations() {
+        binding.layoutBranding.alpha = 0f
+        binding.layoutBranding.translationY = -24f
+        binding.cardLoginForm.alpha = 0f
+        binding.cardLoginForm.translationY = 36f
+        binding.btnCreateAccount.alpha = 0f
+        binding.btnCreateAccount.translationY = 36f
+
+        binding.layoutBranding.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(450)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+
+        binding.cardLoginForm.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setStartDelay(100)
+            .setDuration(480)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+
+        binding.btnCreateAccount.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setStartDelay(160)
+            .setDuration(480)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
     }
 
     private fun setupWindowDecorations() {
