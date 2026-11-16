@@ -2883,11 +2883,11 @@ fun RoutineOnboardingEmptyCard(
             .fillMaxWidth()
             .shadow(
                 elevation = if (isDark) 0.dp else 4.dp,
-                shape = RoundedCornerShape(26.dp),
+                shape = RoundedCornerShape(24.dp),
                 ambientColor = Color.Black.copy(alpha = 0.06f),
                 spotColor = Color.Black.copy(alpha = 0.06f)
             ),
-        shape = RoundedCornerShape(26.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
@@ -2896,181 +2896,272 @@ fun RoutineOnboardingEmptyCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .padding(horizontal = 16.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Header: Soft Badge Icon + Title + Subtitle
-            Box(
+            // 1. Compact Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(
+                            brush = Brush.linearGradient(
+                                colors = if (isDark) {
+                                    listOf(Color(0xFF3B82F6).copy(alpha = 0.3f), Color(0xFF6366F1).copy(alpha = 0.2f))
+                                } else {
+                                    listOf(Color(0xFFDBEAFE), Color(0xFFE0E7FF))
+                                }
+                            )
+                        )
+                        .border(
+                            1.dp,
+                            if (isDark) Color(0xFF60A5FA).copy(alpha = 0.4f) else Color(0xFFBFDBFE),
+                            RoundedCornerShape(13.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarToday,
+                        contentDescription = null,
+                        tint = if (isDark) Color(0xFF93C5FD) else MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Set Up Your Class Routine",
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Surface(
+                            shape = CircleShape,
+                            color = (if (isDark) Color(0xFF4ADE80) else Color(0xFF16A34A)).copy(alpha = if (isDark) 0.2f else 0.12f)
+                        ) {
+                            Text(
+                                text = "Easy Setup",
+                                fontFamily = PlusJakartaSansFontFamily,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color(0xFF4ADE80) else Color(0xFF16A34A),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Scan routine photo to auto-fill or enter manually",
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // 2. Side-by-Side Dual Smart Scan Cards (Camera & Gallery)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Card A: 📸 Scan with Camera
+                BentoScanOptionCard(
+                    modifier = Modifier.weight(1f),
+                    isDark = isDark,
+                    icon = Icons.Default.CameraAlt,
+                    accentColor = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7),
+                    gradientColors = if (isDark) {
+                        listOf(Color(0xFF0C2138), Color(0xFF0F172A))
+                    } else {
+                        listOf(Color(0xFFF0F9FF), Color(0xFFE0F2FE))
+                    },
+                    borderColor = if (isDark) Color(0xFF38BDF8).copy(alpha = 0.35f) else Color(0xFFBAE6FD),
+                    badgeText = "Fastest",
+                    title = "Take Photo",
+                    subtitle = "Scan printed sheet",
+                    onClick = onScanCamera
+                )
+
+                // Card B: 🖼️ Upload from Gallery
+                BentoScanOptionCard(
+                    modifier = Modifier.weight(1f),
+                    isDark = isDark,
+                    icon = Icons.Default.Image,
+                    accentColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
+                    gradientColors = if (isDark) {
+                        listOf(Color(0xFF1E1B4B).copy(alpha = 0.8f), Color(0xFF0F172A))
+                    } else {
+                        listOf(Color(0xFFEEF2FF), Color(0xFFE0E7FF))
+                    },
+                    borderColor = if (isDark) Color(0xFF818CF8).copy(alpha = 0.35f) else Color(0xFFC7D2FE),
+                    badgeText = "Gallery",
+                    title = "Upload Photo",
+                    subtitle = "From saved images",
+                    onClick = onChooseGallery
+                )
+            }
+
+            // 3. Compact Manual Entry Row
+            Surface(
                 modifier = Modifier
-                    .size(64.dp)
-                    .clip(CircleShape)
-                    .background(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.22f else 0.12f)
-                    ),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable { onAddManually() },
+                shape = RoundedCornerShape(14.dp),
+                color = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f) else Color(0xFFF8FAFC),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f))
             ) {
-                Icon(
-                    imageVector = Icons.Default.CalendarToday,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(30.dp)
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.22f else 0.1f),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Or add classes manually",
+                                fontFamily = PlusJakartaSansFontFamily,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Type course codes, room numbers & timings yourself",
+                                fontFamily = PlusJakartaSansFontFamily,
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = "Set Up Your Class Routine",
-                    fontFamily = PlusJakartaSansFontFamily,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    text = "Choose how you'd like to import your weekly schedule into CRConnect:",
-                    fontFamily = PlusJakartaSansFontFamily,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 19.sp
-                )
-            }
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            // Option 1: 📸 Scan with Camera
-            OnboardingActionTile(
-                isDark = isDark,
-                icon = Icons.Default.CameraAlt,
-                iconTint = MaterialTheme.colorScheme.primary,
-                iconBg = MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.22f else 0.12f),
-                title = "Scan Routine with Camera",
-                subtitle = "Take a photo of printed schedule for instant AI auto-fill",
-                badgeText = "Fastest",
-                badgeColor = MaterialTheme.colorScheme.primary,
-                onClick = onScanCamera
-            )
-
-            // Option 2: 🖼️ Upload from Gallery
-            OnboardingActionTile(
-                isDark = isDark,
-                icon = Icons.Default.Image,
-                iconTint = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
-                iconBg = (if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)).copy(alpha = if (isDark) 0.22f else 0.12f),
-                title = "Upload Photo from Gallery",
-                subtitle = "Select a saved routine image or screenshot from your device",
-                badgeText = "Gallery",
-                badgeColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
-                onClick = onChooseGallery
-            )
-
-            // Option 3: ✍️ Add Manually
-            OnboardingActionTile(
-                isDark = isDark,
-                icon = Icons.Default.Add,
-                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                iconBg = MaterialTheme.colorScheme.surfaceVariant,
-                title = "Add Classes Manually",
-                subtitle = "Type your course codes, room numbers & timings yourself",
-                badgeText = "Manual",
-                badgeColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                onClick = onAddManually
-            )
         }
     }
 }
 
 @Composable
-private fun OnboardingActionTile(
+private fun BentoScanOptionCard(
+    modifier: Modifier = Modifier,
     isDark: Boolean,
     icon: ImageVector,
-    iconTint: Color,
-    iconBg: Color,
+    accentColor: Color,
+    gradientColors: List<Color>,
+    borderColor: Color,
+    badgeText: String,
     title: String,
     subtitle: String,
-    badgeText: String,
-    badgeColor: Color,
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
             .clickable { onClick() },
-        shape = RoundedCornerShape(18.dp),
-        color = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color(0xFFF8FAFC),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f))
+        shape = RoundedCornerShape(16.dp),
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, borderColor)
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        Box(
+            modifier = Modifier
+                .background(brush = Brush.linearGradient(colors = gradientColors))
+                .padding(12.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(color = iconBg, shape = RoundedCornerShape(14.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
             Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = title,
-                        fontFamily = PlusJakartaSansFontFamily,
-                        fontSize = 14.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(
+                                color = accentColor.copy(alpha = if (isDark) 0.25f else 0.15f),
+                                shape = RoundedCornerShape(10.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+
                     Surface(
                         shape = CircleShape,
-                        color = badgeColor.copy(alpha = if (isDark) 0.22f else 0.12f)
+                        color = accentColor.copy(alpha = if (isDark) 0.22f else 0.12f)
                     ) {
                         Text(
                             text = badgeText,
                             fontFamily = PlusJakartaSansFontFamily,
-                            fontSize = 10.sp,
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = badgeColor,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                            color = accentColor,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
                 }
 
-                Text(
-                    text = subtitle,
-                    fontFamily = PlusJakartaSansFontFamily,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 15.sp
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(
+                        text = title,
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = subtitle,
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-
-            Icon(
-                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.size(20.dp)
-            )
         }
     }
 }

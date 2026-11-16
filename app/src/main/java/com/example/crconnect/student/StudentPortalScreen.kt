@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.MediaStore
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
@@ -152,6 +153,19 @@ fun StudentPortalScreen(
         else -> systemDark
     }
     val portalGradient = getPortalGradient(isDark)
+
+    // Handle Android system back navigation:
+    // 1. If drawer is open, close drawer
+    // 2. If on another tab (Profile / Election / Attendance), return to Routine tab (0)
+    // 3. If on Routine tab, normal system back (exit)
+    BackHandler(enabled = drawerState.isOpen || uiState.selectedTab != 0) {
+        if (drawerState.isOpen) {
+            coroutineScope.launch { drawerState.close() }
+        } else if (uiState.selectedTab != 0) {
+            isNavVisible = true
+            viewModel.selectTab(0)
+        }
+    }
 
     Box(
         modifier = Modifier
