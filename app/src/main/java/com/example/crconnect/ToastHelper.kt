@@ -9,6 +9,7 @@ import android.content.ContextWrapper
 import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -257,7 +258,7 @@ object ToastHelper {
                 container.removeView(oldestView)
             }
 
-            val isDarkMode = (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+            val isDarkMode = isDarkMode(activity)
             val toastView = createToastView(activity, toastType, title, body, isDarkMode)
 
             val childParams = LinearLayout.LayoutParams(
@@ -324,6 +325,28 @@ object ToastHelper {
         } catch (_: Exception) {}
     }
 
+    private fun isDarkMode(context: Context): Boolean {
+        return try {
+            val sessionManager = SessionManager(context)
+            val currentAct = currentActivityRef?.get()
+            val themeMode = when {
+                context is TeacherDashboardActivity || currentAct is TeacherDashboardActivity -> sessionManager.teacherThemeMode
+                context is StudentDashboardActivity || currentAct is StudentDashboardActivity -> sessionManager.studentThemeMode
+                sessionManager.userRole.equals("Teacher", ignoreCase = true) -> sessionManager.teacherThemeMode
+                sessionManager.userRole.equals("Student", ignoreCase = true) || sessionManager.userRole.equals("CR", ignoreCase = true) -> sessionManager.studentThemeMode
+                else -> sessionManager.themeMode
+            }
+            val systemDark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+            when (themeMode) {
+                SessionManager.THEME_LIGHT -> false
+                SessionManager.THEME_DARK -> true
+                else -> systemDark
+            }
+        } catch (_: Exception) {
+            (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        }
+    }
+
     private fun createToastView(
         context: Context,
         toastType: ToastType,
@@ -332,19 +355,22 @@ object ToastHelper {
         isDarkMode: Boolean
     ): FrameLayout {
         val rootFrame = LayoutInflater.from(context).inflate(R.layout.toast_custom, null, false) as FrameLayout
-        val style = getToastStyle(context, toastType)
+        val style = getToastStyle(toastType, isDarkMode)
 
-        // Light mode card background override if needed
-        if (!isDarkMode) {
-            val lightCardBg = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf("#FAF5F7FA".toColorInt(), "#F0E8EEF8".toColorInt())
-            ).apply {
-                cornerRadius = dpToPx(context, 18f).toFloat()
-                setStroke(dpToPx(context, 1f), "#14000000".toColorInt())
-            }
-            rootFrame.background = lightCardBg
-            rootFrame.elevation = dpToPx(context, 8f).toFloat()
+        // Set card background with proper theme styling & borders
+        val cardBg = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            style.cardBgGradient
+        ).apply {
+            cornerRadius = dpToPx(context, 18f).toFloat()
+            setStroke(dpToPx(context, 1f), style.cardStrokeColor)
+        }
+        rootFrame.background = cardBg
+        rootFrame.elevation = dpToPx(context, if (isDarkMode) 12f else 8f).toFloat()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            rootFrame.outlineAmbientShadowColor = if (isDarkMode) "#8C000000".toColorInt() else "#1A000000".toColorInt()
+            rootFrame.outlineSpotShadowColor = if (isDarkMode) "#8C000000".toColorInt() else "#20000000".toColorInt()
         }
 
         // Icon Container
@@ -368,14 +394,14 @@ object ToastHelper {
         if (body.isNotBlank()) {
             bodyTextView.text = body
             bodyTextView.visibility = View.VISIBLE
-            bodyTextView.setTextColor(if (isDarkMode) "#4A6080".toColorInt() else "#8898B0".toColorInt())
+            bodyTextView.setTextColor(style.bodyColor)
         } else {
             bodyTextView.visibility = View.GONE
         }
 
         // Close Icon
         val closeButtonIcon = rootFrame.findViewById<ImageView>(R.id.toastCloseIcon)
-        closeButtonIcon.setColorFilter(if (isDarkMode) "#2D4060".toColorInt() else "#C0CCE0".toColorInt())
+        closeButtonIcon?.setColorFilter(style.closeIconColor)
 
         // Progress Bar Animation
         val progressBarView = rootFrame.findViewById<View>(R.id.toastProgressBar)
@@ -449,72 +475,121 @@ object ToastHelper {
     }
 
     private class ToastStyle(
+        val cardBgGradient: IntArray,
+        val cardStrokeColor: Int,
         val iconBgGradient: IntArray,
         val iconStrokeColor: Int,
         val iconRes: Int,
         val titleColor: Int,
+        val bodyColor: Int,
+        val closeIconColor: Int,
         val barColors: IntArray,
         val iconTintColor: Int
     )
 
-    private fun getToastStyle(context: Context, toastType: ToastType): ToastStyle {
-        return when (toastType) {
-            ToastType.SUCCESS -> ToastStyle(
-                iconBgGradient = intArrayOf(
-                    ContextCompat.getColor(context, R.color.toast_success_icon_bg_start),
-                    ContextCompat.getColor(context, R.color.toast_success_icon_bg_end)
-                ),
-                iconStrokeColor = ContextCompat.getColor(context, R.color.toast_success_icon_border),
-                iconRes = R.drawable.ic_toast_check,
-                titleColor = ContextCompat.getColor(context, R.color.toast_success_title_color),
-                barColors = intArrayOf(
-                    ContextCompat.getColor(context, R.color.toast_success_progress_bar_start),
-                    ContextCompat.getColor(context, R.color.toast_success_progress_bar_end)
-                ),
-                iconTintColor = ContextCompat.getColor(context, R.color.toast_success_icon_color)
-            )
-            ToastType.INFO -> ToastStyle(
-                iconBgGradient = intArrayOf(
-                    ContextCompat.getColor(context, R.color.toast_info_icon_bg_start),
-                    ContextCompat.getColor(context, R.color.toast_info_icon_bg_end)
-                ),
-                iconStrokeColor = ContextCompat.getColor(context, R.color.toast_info_icon_border),
-                iconRes = R.drawable.ic_toast_vote,
-                titleColor = ContextCompat.getColor(context, R.color.toast_info_title_color),
-                barColors = intArrayOf(
-                    ContextCompat.getColor(context, R.color.toast_info_progress_bar_start),
-                    ContextCompat.getColor(context, R.color.toast_info_progress_bar_end)
-                ),
-                iconTintColor = ContextCompat.getColor(context, R.color.toast_info_icon_color)
-            )
-            ToastType.WARNING -> ToastStyle(
-                iconBgGradient = intArrayOf(
-                    ContextCompat.getColor(context, R.color.toast_warning_icon_bg_start),
-                    ContextCompat.getColor(context, R.color.toast_warning_icon_bg_end)
-                ),
-                iconStrokeColor = ContextCompat.getColor(context, R.color.toast_warning_icon_border),
-                iconRes = R.drawable.ic_toast_clock,
-                titleColor = ContextCompat.getColor(context, R.color.toast_warning_title_color),
-                barColors = intArrayOf(
-                    ContextCompat.getColor(context, R.color.toast_warning_progress_bar_start),
-                    ContextCompat.getColor(context, R.color.toast_warning_progress_bar_end)
-                ),
-                iconTintColor = ContextCompat.getColor(context, R.color.toast_warning_icon_color)
-            )
-            ToastType.ERROR -> ToastStyle(
-                iconBgGradient = intArrayOf(
-                    ContextCompat.getColor(context, R.color.toast_error_icon_bg_start),
-                    ContextCompat.getColor(context, R.color.toast_error_icon_bg_end)
-                ),
-                iconStrokeColor = ContextCompat.getColor(context, R.color.toast_error_icon_border),
-                iconRes = R.drawable.ic_toast_shield,
-                titleColor = ContextCompat.getColor(context, R.color.toast_error_title_color),
-                barColors = intArrayOf(
-                    ContextCompat.getColor(context, R.color.toast_error_progress_bar_start),
-                    ContextCompat.getColor(context, R.color.toast_error_progress_bar_end)
-                ),
-                iconTintColor = ContextCompat.getColor(context, R.color.toast_error_icon_color)
-            )
+    private fun getToastStyle(toastType: ToastType, isDark: Boolean): ToastStyle {
+        return if (isDark) {
+            when (toastType) {
+                ToastType.SUCCESS -> ToastStyle(
+                    cardBgGradient = intArrayOf("#131B2E".toColorInt(), "#0F172A".toColorInt()),
+                    cardStrokeColor = "#24354D".toColorInt(),
+                    iconBgGradient = intArrayOf("#4022C55E".toColorInt(), "#2510B981".toColorInt()),
+                    iconStrokeColor = "#4022C55E".toColorInt(),
+                    iconRes = R.drawable.ic_toast_check,
+                    titleColor = "#86EFAC".toColorInt(),
+                    bodyColor = "#94A3B8".toColorInt(),
+                    closeIconColor = "#64748B".toColorInt(),
+                    barColors = intArrayOf("#22C55E".toColorInt(), "#10B981".toColorInt()),
+                    iconTintColor = "#4ADE80".toColorInt()
+                )
+                ToastType.INFO -> ToastStyle(
+                    cardBgGradient = intArrayOf("#131B2E".toColorInt(), "#0F172A".toColorInt()),
+                    cardStrokeColor = "#24354D".toColorInt(),
+                    iconBgGradient = intArrayOf("#403B82F6".toColorInt(), "#256366F1".toColorInt()),
+                    iconStrokeColor = "#403B82F6".toColorInt(),
+                    iconRes = R.drawable.ic_toast_vote,
+                    titleColor = "#93C5FD".toColorInt(),
+                    bodyColor = "#94A3B8".toColorInt(),
+                    closeIconColor = "#64748B".toColorInt(),
+                    barColors = intArrayOf("#3B82F6".toColorInt(), "#6366F1".toColorInt()),
+                    iconTintColor = "#60A5FA".toColorInt()
+                )
+                ToastType.WARNING -> ToastStyle(
+                    cardBgGradient = intArrayOf("#131B2E".toColorInt(), "#0F172A".toColorInt()),
+                    cardStrokeColor = "#24354D".toColorInt(),
+                    iconBgGradient = intArrayOf("#40F59E0B".toColorInt(), "#25EA580C".toColorInt()),
+                    iconStrokeColor = "#40F59E0B".toColorInt(),
+                    iconRes = R.drawable.ic_toast_clock,
+                    titleColor = "#FCD34D".toColorInt(),
+                    bodyColor = "#94A3B8".toColorInt(),
+                    closeIconColor = "#64748B".toColorInt(),
+                    barColors = intArrayOf("#F59E0B".toColorInt(), "#EA580C".toColorInt()),
+                    iconTintColor = "#FCD34D".toColorInt()
+                )
+                ToastType.ERROR -> ToastStyle(
+                    cardBgGradient = intArrayOf("#131B2E".toColorInt(), "#0F172A".toColorInt()),
+                    cardStrokeColor = "#24354D".toColorInt(),
+                    iconBgGradient = intArrayOf("#40EF4444".toColorInt(), "#25DC2626".toColorInt()),
+                    iconStrokeColor = "#40EF4444".toColorInt(),
+                    iconRes = R.drawable.ic_toast_shield,
+                    titleColor = "#FCA5A5".toColorInt(),
+                    bodyColor = "#94A3B8".toColorInt(),
+                    closeIconColor = "#64748B".toColorInt(),
+                    barColors = intArrayOf("#EF4444".toColorInt(), "#DC2626".toColorInt()),
+                    iconTintColor = "#FCA5A5".toColorInt()
+                )
+            }
+        } else {
+            when (toastType) {
+                ToastType.SUCCESS -> ToastStyle(
+                    cardBgGradient = intArrayOf("#FFFFFFFF".toColorInt(), "#FFF8FAFC".toColorInt()),
+                    cardStrokeColor = "#E2E8F0".toColorInt(),
+                    iconBgGradient = intArrayOf("#DCFCE7".toColorInt(), "#BBF7D0".toColorInt()),
+                    iconStrokeColor = "#86EFAC".toColorInt(),
+                    iconRes = R.drawable.ic_toast_check,
+                    titleColor = "#15803D".toColorInt(),
+                    bodyColor = "#475569".toColorInt(),
+                    closeIconColor = "#94A3B8".toColorInt(),
+                    barColors = intArrayOf("#22C55E".toColorInt(), "#10B981".toColorInt()),
+                    iconTintColor = "#16A34A".toColorInt()
+                )
+                ToastType.INFO -> ToastStyle(
+                    cardBgGradient = intArrayOf("#FFFFFFFF".toColorInt(), "#FFF8FAFC".toColorInt()),
+                    cardStrokeColor = "#E2E8F0".toColorInt(),
+                    iconBgGradient = intArrayOf("#DBEAFE".toColorInt(), "#BFDBFE".toColorInt()),
+                    iconStrokeColor = "#93C5FD".toColorInt(),
+                    iconRes = R.drawable.ic_toast_vote,
+                    titleColor = "#1D4ED8".toColorInt(),
+                    bodyColor = "#475569".toColorInt(),
+                    closeIconColor = "#94A3B8".toColorInt(),
+                    barColors = intArrayOf("#3B82F6".toColorInt(), "#6366F1".toColorInt()),
+                    iconTintColor = "#2563EB".toColorInt()
+                )
+                ToastType.WARNING -> ToastStyle(
+                    cardBgGradient = intArrayOf("#FFFFFFFF".toColorInt(), "#FFF8FAFC".toColorInt()),
+                    cardStrokeColor = "#E2E8F0".toColorInt(),
+                    iconBgGradient = intArrayOf("#FEF3C7".toColorInt(), "#FDE68A".toColorInt()),
+                    iconStrokeColor = "#FCD34D".toColorInt(),
+                    iconRes = R.drawable.ic_toast_clock,
+                    titleColor = "#B45309".toColorInt(),
+                    bodyColor = "#475569".toColorInt(),
+                    closeIconColor = "#94A3B8".toColorInt(),
+                    barColors = intArrayOf("#F59E0B".toColorInt(), "#EA580C".toColorInt()),
+                    iconTintColor = "#D97706".toColorInt()
+                )
+                ToastType.ERROR -> ToastStyle(
+                    cardBgGradient = intArrayOf("#FFFFFFFF".toColorInt(), "#FFF8FAFC".toColorInt()),
+                    cardStrokeColor = "#E2E8F0".toColorInt(),
+                    iconBgGradient = intArrayOf("#FEE2E2".toColorInt(), "#FECACA".toColorInt()),
+                    iconStrokeColor = "#FCA5A5".toColorInt(),
+                    iconRes = R.drawable.ic_toast_shield,
+                    titleColor = "#B91C1C".toColorInt(),
+                    bodyColor = "#475569".toColorInt(),
+                    closeIconColor = "#94A3B8".toColorInt(),
+                    barColors = intArrayOf("#EF4444".toColorInt(), "#DC2626".toColorInt()),
+                    iconTintColor = "#DC2626".toColorInt()
+                )
+            }
         }
     }
 
