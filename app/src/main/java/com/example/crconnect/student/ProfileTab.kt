@@ -92,6 +92,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -1950,23 +1951,102 @@ fun ProfileTab(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Card 1: User Main Info & Avatar (.card.c)
+        // Card 1: Digital Student Identity Pass (.card.c)
         DesignCard(padding = 20.dp) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Large Avatar Circle (80dp x 80dp) with Camera Upload Tap Overlay
+                // Top Header Ribbon: University Branding + Active Verification Pill
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Badge,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                        }
+                        Text(
+                            text = "BUBT DIGITAL ID",
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            letterSpacing = 1.2.sp
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(if (isDark) Color(0xFF0D3B24) else Color(0xFFDCFCE7))
+                            .border(
+                                1.dp,
+                                if (isDark) Color(0xFF15803D).copy(alpha = 0.5f) else Color(0xFFBBF7D0),
+                                CircleShape
+                            )
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isDark) Color(0xFF4ADE80) else Color(0xFF16A34A))
+                            )
+                            Text(
+                                text = "Verified · Active",
+                                fontFamily = PlusJakartaSansFontFamily,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color(0xFF4ADE80) else Color(0xFF166534)
+                            )
+                        }
+                    }
+                }
+
+                // Avatar with Gradient Glow Ring + Upload Camera Badge
                 Box(
                     modifier = Modifier
-                        .size(80.dp)
+                        .size(90.dp)
                         .clickable { onEditProfilePicture() },
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .size(86.dp)
+                            .clip(CircleShape)
+                            .border(
+                                2.5.dp,
+                                Brush.linearGradient(
+                                    listOf(
+                                        Color(0xFF0066FF),
+                                        Color(0xFF60A5FA),
+                                        Color(0xFF38BDF8)
+                                    )
+                                ),
+                                CircleShape
+                            )
+                            .padding(3.dp)
                             .clip(CircleShape)
                             .background(Color.Transparent),
                         contentAlignment = Alignment.Center
@@ -2027,7 +2107,7 @@ fun ProfileTab(
                         }
                     }
 
-                    // Camera Badge Overlay protruding outside the bottom-right edge
+                    // Camera Badge Overlay
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
@@ -2049,17 +2129,17 @@ fun ProfileTab(
                     }
                 }
 
-                // Below avatar: Name, Email, Department chip
+                // Name & Email
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     Text(
                         text = profile.name.ifBlank { "Student" },
                         fontFamily = PlusJakartaSansFontFamily,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -2068,35 +2148,12 @@ fun ProfileTab(
                     Text(
                         text = profile.email.ifBlank { "student@gmail.com" },
                         fontFamily = PlusJakartaSansFontFamily,
-                        fontSize = 14.sp,
+                        fontSize = 13.5.sp,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    val isDark = isSystemInDarkTheme()
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(if (isDark) Color(0xFF0D3B24) else Color(0xFFDCFCE7))
-                            .border(
-                                1.dp,
-                                if (isDark) Color(0xFF15803D).copy(alpha = 0.5f) else Color(0xFFBBF7D0),
-                                CircleShape
-                            )
-                            .padding(horizontal = 12.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "Verified · Locked",
-                            fontFamily = PlusJakartaSansFontFamily,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDark) Color(0xFF4ADE80) else Color(0xFF166534)
-                        )
-                    }
                 }
 
                 // 3 Stat Tiles (Student ID, Intake, Section)
@@ -2137,7 +2194,7 @@ fun ProfileTab(
             }
         }
 
-        // Card 2: Compact Clickable Academic Overview Entry
+        // Card 2: Live Bento Tile - Academic Overview
         DesignCard(
             padding = 16.dp,
             onClick = { showAcademicOverviewPage = true }
@@ -2154,15 +2211,19 @@ fun ProfileTab(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF2563EB), Color(0xFF1D4ED8))
+                                )
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.School,
                             contentDescription = "Academic Overview",
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = Color.White,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -2184,16 +2245,38 @@ fun ProfileTab(
                     }
                 }
 
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                    contentDescription = "Open Academic Overview",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(24.dp)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (profile.cgpa.isNotBlank() && profile.cgpa != "--") {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                        ) {
+                            Text(
+                                text = "CGPA ${profile.cgpa}",
+                                fontFamily = PlusJakartaSansFontFamily,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = "Open Academic Overview",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
         }
 
-        // Card 3: Academic Advisor Navigation Tile
+        // Card 3: Live Bento Tile - Academic Advisor
         DesignCard(
             padding = 16.dp,
             onClick = { showAdvisorPage = true }
@@ -2210,15 +2293,19 @@ fun ProfileTab(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF059669), Color(0xFF047857))
+                                )
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.SupervisorAccount,
                             contentDescription = "Academic Advisor",
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = Color.White,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -2231,25 +2318,47 @@ fun ProfileTab(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Advisor details & contact info",
+                            text = profile.advisorName.ifBlank { "Advisor details & contact info" },
                             fontFamily = PlusJakartaSansFontFamily,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Normal,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                    contentDescription = "Open Academic Advisor",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(24.dp)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF10B981).copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.3f))
+                    ) {
+                        Text(
+                            text = "Assigned",
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color(0xFF4ADE80) else Color(0xFF059669),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = "Open Academic Advisor",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
         }
 
-        // Card 4: Settings Navigation Tile
+        // Card 4: Live Bento Tile - Settings & Security
         DesignCard(
             padding = 16.dp,
             onClick = { showSettingsPage = true }
@@ -2266,21 +2375,25 @@ fun ProfileTab(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            .size(46.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF7C3AED), Color(0xFF6D28D9))
+                                )
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Settings",
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = Color.White,
                             modifier = Modifier.size(22.dp)
                         )
                     }
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = "Settings",
+                            text = "Settings & Security",
                             fontFamily = PlusJakartaSansFontFamily,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
@@ -2300,29 +2413,27 @@ fun ProfileTab(
                     imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                     contentDescription = "Open Settings",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }
 
-        // Log out Full-Width Red Outlined Button at bottom of main profile screen
+        // Log out Full-Width Refined Action Button
         val logoutBg = if (isDark) Color(0xFF2C1014) else Color(0xFFFEF2F2)
         val logoutStroke = if (isDark) Color(0xFF7F1D1D) else Color(0xFFFECACA)
         val logoutText = if (isDark) Color(0xFFEF4444) else Color(0xFFB91C1C)
 
-        OutlinedButton(
-            onClick = onLogout,
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(50.dp),
-            shape = RoundedCornerShape(12.dp),
-            border = BorderStroke(1.dp, logoutStroke),
-            colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = logoutBg,
-                contentColor = logoutText
-            )
+                .clip(RoundedCornerShape(16.dp))
+                .clickable { onLogout() },
+            shape = RoundedCornerShape(16.dp),
+            color = logoutBg,
+            border = BorderStroke(1.dp, logoutStroke)
         ) {
             Row(
+                modifier = Modifier.padding(vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
@@ -2330,13 +2441,13 @@ fun ProfileTab(
                     imageVector = Icons.AutoMirrored.Filled.Logout,
                     contentDescription = null,
                     tint = logoutText,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(19.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = "Log out",
                     fontFamily = PlusJakartaSansFontFamily,
-                    fontSize = 15.sp,
+                    fontSize = 14.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = logoutText
                 )
@@ -2357,23 +2468,24 @@ private fun InfoTile(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.8f), RoundedCornerShape(16.dp))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(vertical = 12.dp, horizontal = 4.dp)
+            .padding(vertical = 12.dp, horizontal = 6.dp)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+            verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             Text(
-                text = label,
+                text = label.uppercase(),
                 fontFamily = PlusJakartaSansFontFamily,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                letterSpacing = 0.5.sp
             )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -2382,19 +2494,19 @@ private fun InfoTile(
                 Text(
                     text = value.ifBlank { "--" },
                     fontFamily = PlusJakartaSansFontFamily,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
                     color = if (value == "Tap to set" || value == "Not Set") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (showEditIcon) {
-                    Spacer(modifier = Modifier.width(3.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Icon(
                         imageVector = Icons.Default.Edit,
                         contentDescription = "Edit",
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(12.dp)
+                        modifier = Modifier.size(13.dp)
                     )
                 }
             }
