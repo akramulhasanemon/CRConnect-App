@@ -89,7 +89,7 @@ fun AttendanceTab(
         label = "liveAttendanceProgress"
     )
 
-    val screenBg = MaterialTheme.colorScheme.background
+    val screenBg = Color.Transparent
 
     LazyColumn(
         modifier = modifier

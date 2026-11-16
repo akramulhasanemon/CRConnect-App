@@ -42,6 +42,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -2444,14 +2447,18 @@ private fun FullScreenSubPageDialog(
             }
         }
 
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
+        val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val safeTopPadding = if (statusBarTop > 0.dp) statusBarTop else 48.dp
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(brush = getPortalGradient(isDark))
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .statusBarsPadding()
+                    .padding(top = safeTopPadding)
                     .navigationBarsPadding()
             ) {
                 content()

@@ -80,7 +80,7 @@ fun ElectionTab(
         }
     }
 
-    val screenBg = if (isDark) Color(0xFF0A0E1A) else Color(0xFFEAF2FF)
+    val screenBg = Color.Transparent
 
     Column(
         modifier = Modifier
