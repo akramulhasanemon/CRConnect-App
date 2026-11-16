@@ -533,7 +533,6 @@ fun StudentBottomNavigation(
             ) {
                 val items = listOf(
                     Triple("Routine", R.drawable.ic_nav_routine, 0),
-                    Triple("Attendance", R.drawable.ic_nav_attendance, 1),
                     Triple("Election", R.drawable.ic_nav_candidates, 2),
                     Triple("Profile", R.drawable.ic_nav_profile, 3)
                 )

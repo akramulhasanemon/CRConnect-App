@@ -103,8 +103,8 @@ fun StudentPortalDrawerContent(
                     .fillMaxWidth()
                     .clickable {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        localSelectedTab = 2
-                        onTabSelected(2)
+                        localSelectedTab = 3
+                        onTabSelected(3)
                     }
                     .padding(start = 24.dp, end = 20.dp, top = 24.dp, bottom = 20.dp)
             ) {
