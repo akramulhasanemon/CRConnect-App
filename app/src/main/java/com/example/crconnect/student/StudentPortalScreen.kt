@@ -301,7 +301,8 @@ fun StudentPortalScreen(
                                     onSecuritySettings = { isSecurityDialogOpen = true },
                                     onCheckUpdate = { viewModel.checkForAppUpdates(context, forceCheck = true) },
                                     onNavigateToAttendance = { viewModel.selectTab(1) },
-                                    onSignOut = onSignOut
+                                    onSignOut = onSignOut,
+                                    onLogout = onSignOut
                                 )
                             }
                         }
