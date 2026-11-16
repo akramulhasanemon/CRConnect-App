@@ -212,7 +212,7 @@ fun StudentPortalScreen(
                     )
                 },
                 snackbarHost = { SnackbarHost(snackbarHostState) },
-                containerColor = if (isDark) DarkBackground else Color(0xFFEAF2FF)
+                containerColor = Color.Transparent
             ) { paddingValues ->
                 Box(
                     modifier = Modifier
