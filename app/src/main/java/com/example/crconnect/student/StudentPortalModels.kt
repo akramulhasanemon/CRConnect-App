@@ -100,6 +100,88 @@ fun getClassTimingStatus(dayIndex: Int, timeSlot: String): ClassTimingStatus {
     }
 }
 
+data class ClassTimeRange(
+    val startHour: String,
+    val startAmPm: String,
+    val endHour: String,
+    val endAmPm: String,
+    val fullFormattedRange: String
+)
+
+fun parseClassTimeRange(timeSlot: String): ClassTimeRange {
+    val parts = timeSlot.split("-", "–").map { it.trim() }.filter { it.isNotBlank() }
+    val startRaw = parts.firstOrNull() ?: "09:00 AM"
+    val endRaw = if (parts.size >= 2) parts[1] else null
+
+    fun parseParts(timeStr: String): Pair<String, String> {
+        val match = Regex("""(?i)(\d{1,2}:\d{2})\s*(AM|PM)?""").find(timeStr)
+        if (match != null) {
+            val hhmm = match.groupValues[1]
+            val ampm = if (match.groupValues[2].isNotBlank()) match.groupValues[2].uppercase(Locale.ROOT) else ""
+            return Pair(hhmm, ampm)
+        }
+        val tokens = timeStr.split("\\s+".toRegex())
+        val h = tokens.firstOrNull() ?: timeStr
+        val a = if (tokens.size > 1) tokens[1].uppercase(Locale.ROOT) else ""
+        return Pair(h, a)
+    }
+
+    val (sHour, sAmPm) = parseParts(startRaw)
+    val effectiveStartAmPm = sAmPm.ifEmpty { "AM" }
+
+    val (eHour, eAmPm) = if (endRaw != null) {
+        val (h, a) = parseParts(endRaw)
+        Pair(h, a.ifEmpty { effectiveStartAmPm })
+    } else {
+        val sMin = startMinutes(startRaw)
+        val eMin = sMin + 90
+        val eHour24 = (eMin / 60) % 24
+        val eMinute = eMin % 60
+        val isPm = eHour24 >= 12
+        val h12 = when {
+            eHour24 == 0 -> 12
+            eHour24 > 12 -> eHour24 - 12
+            else -> eHour24
+        }
+        val hhmm = String.format(Locale.US, "%02d:%02d", h12, eMinute)
+        val a = if (isPm) "PM" else "AM"
+        Pair(hhmm, a)
+    }
+
+    val fullRange = "$sHour $effectiveStartAmPm – $eHour $eAmPm"
+    return ClassTimeRange(
+        startHour = sHour,
+        startAmPm = effectiveStartAmPm,
+        endHour = eHour,
+        endAmPm = eAmPm,
+        fullFormattedRange = fullRange
+    )
+}
+
+fun getClassLiveProgress(dayIndex: Int, timeSlot: String): Float {
+    val status = getClassTimingStatus(dayIndex, timeSlot)
+    return when (status) {
+        ClassTimingStatus.PAST -> 1.0f
+        ClassTimingStatus.FUTURE -> 0.0f
+        ClassTimingStatus.LIVE_NOW -> {
+            val cal = Calendar.getInstance()
+            val currentMins = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+            val sMins = startMinutes(timeSlot)
+            val eMins = endMinutes(timeSlot)
+            val duration = (eMins - sMins).coerceAtLeast(1)
+            val elapsed = (currentMins - sMins).coerceIn(0, duration)
+            (elapsed.toFloat() / duration.toFloat()).coerceIn(0.06f, 1.0f)
+        }
+    }
+}
+
+fun getClassRemainingMinutes(timeSlot: String): Int {
+    val cal = Calendar.getInstance()
+    val currentMins = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+    val eMins = endMinutes(timeSlot)
+    return (eMins - currentMins).coerceAtLeast(0)
+}
+
 fun getEffectiveAttendanceState(dayIndex: Int, classModel: ClassModel): String? {
     if (classModel.attendanceState == "attended") {
         return "attended"

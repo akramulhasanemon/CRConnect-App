@@ -15,6 +15,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -33,6 +39,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -1025,6 +1032,7 @@ fun RoutineTab(
                         dayIndex = uiState.selectedDayIndex,
                         colorVariant = colorVariant,
                         isLastItem = isLastItem,
+                        currentTimeMillis = currentTimeMillis,
                         onAttendanceChanged = { target ->
                             onToggleAttendance(classModel.id, target, uiState.selectedDayIndex)
                         }
@@ -1215,46 +1223,102 @@ private fun TimelineRowItem(
     dayIndex: Int,
     colorVariant: CardColorVariant,
     isLastItem: Boolean,
+    currentTimeMillis: Long = 0L,
     onAttendanceChanged: (String) -> Unit
 ) {
     val isDark = LocalIsDarkTheme.current
-    val (hourText, amPmText) = extractTimeParts(classModel.timeSlot)
+    val timeRange = parseClassTimeRange(classModel.timeSlot)
+    val timingStatus = getClassTimingStatus(dayIndex, classModel.timeSlot)
+    val effectiveState = getEffectiveAttendanceState(dayIndex, classModel)
+    val liveProgress = getClassLiveProgress(dayIndex, classModel.timeSlot)
+    val animatedProgress by animateFloatAsState(
+        targetValue = liveProgress,
+        animationSpec = tween(600),
+        label = "live_progress"
+    )
+
+    val infiniteTransition = rememberInfiniteTransition(label = "live_pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_alpha"
+    )
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Max),
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 1. Time Column
+        // 1. Time Column (Start Time + Ends Label + End Time)
         Column(
             modifier = Modifier
-                .width(52.dp)
-                .padding(top = 16.dp),
+                .width(54.dp)
+                .fillMaxHeight()
+                .padding(top = 14.dp, bottom = 18.dp),
             horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(1.dp)
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = hourText,
-                fontFamily = PlusJakartaSansFontFamily,
-                fontSize = 14.5.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isDark) Color(0xFFE8F0FE) else Color(0xFF1A2540),
-                lineHeight = 16.sp
-            )
-            Text(
-                text = amPmText,
-                fontFamily = PlusJakartaSansFontFamily,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                color = if (isDark) Color(0xFF6B7F9E) else Color(0xFF8898B0)
-            )
+            // Start Time
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                Text(
+                    text = timeRange.startHour,
+                    fontFamily = PlusJakartaSansFontFamily,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDark) Color(0xFFE8F0FE) else Color(0xFF1A2540),
+                    lineHeight = 16.sp
+                )
+                Text(
+                    text = timeRange.startAmPm,
+                    fontFamily = PlusJakartaSansFontFamily,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isDark) Color(0xFF6B7F9E) else Color(0xFF8898B0)
+                )
+            }
+
+            // End Time
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                Text(
+                    text = "ends",
+                    fontFamily = PlusJakartaSansFontFamily,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (isDark) Color(0xFF4A5D78) else Color(0xFFA0AEC0)
+                )
+                Text(
+                    text = timeRange.endHour,
+                    fontFamily = PlusJakartaSansFontFamily,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isDark) Color(0xFF8898B0) else Color(0xFF64748B),
+                    lineHeight = 14.sp
+                )
+                Text(
+                    text = timeRange.endAmPm,
+                    fontFamily = PlusJakartaSansFontFamily,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (isDark) Color(0xFF4A5D78) else Color(0xFFA0AEC0)
+                )
+            }
         }
 
-        // 2. Timeline Line & Dot
+        // 2. Timeline Line & Dots
         Column(
             modifier = Modifier
-                .padding(top = 16.dp, bottom = 12.dp)
+                .padding(top = 16.dp, bottom = 16.dp)
                 .fillMaxHeight(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -1267,10 +1331,10 @@ private fun TimelineRowItem(
                     .background(colorVariant.dotColor)
             )
 
-            // Continuous Dynamic Segment Line
+            // Dynamic Segment Line
             Box(
                 modifier = Modifier
-                    .padding(top = 4.dp)
+                    .padding(vertical = 3.dp)
                     .width(2.dp)
                     .weight(1f)
                     .clip(RoundedCornerShape(2.dp))
@@ -1285,6 +1349,19 @@ private fun TimelineRowItem(
                         } else {
                             SolidColor(colorVariant.segmentColor)
                         }
+                    )
+            )
+
+            // End Dot (aligned with End Time)
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0))
+                    .border(
+                        1.dp,
+                        colorVariant.dotColor.copy(alpha = 0.5f),
+                        CircleShape
                     )
             )
         }
@@ -1304,17 +1381,76 @@ private fun TimelineRowItem(
                     shape = RoundedCornerShape(18.dp)
                 )
         ) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                // Left Accent Color Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Max)
+            ) {
+                // Left Dynamic Accent / Live Progress Bar
                 Box(
                     modifier = Modifier
-                        .width(4.dp)
-                        .height(130.dp)
+                        .width(5.dp)
+                        .fillMaxHeight()
                         .clip(RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp))
                         .background(
-                            brush = Brush.verticalGradient(colorVariant.gradientColors)
+                            if (timingStatus == ClassTimingStatus.LIVE_NOW) {
+                                colorVariant.gradientColors.first().copy(alpha = if (isDark) 0.22f else 0.15f)
+                            } else if (timingStatus == ClassTimingStatus.PAST) {
+                                colorVariant.gradientColors.first().copy(alpha = 0.35f)
+                            } else {
+                                Color.Transparent
+                            }
                         )
-                )
+                ) {
+                    if (timingStatus == ClassTimingStatus.LIVE_NOW) {
+                        val currentProgress = animatedProgress.coerceIn(0.06f, 1.0f)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight(currentProgress)
+                                .clip(RoundedCornerShape(topStart = 18.dp))
+                                .background(
+                                    brush = Brush.verticalGradient(
+                                        listOf(
+                                            Color(0xFF22C55E),
+                                            Color(0xFF10B981),
+                                            Color(0xFF06B6D4)
+                                        )
+                                    )
+                                )
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .background(Color.White.copy(alpha = pulseAlpha))
+                            )
+                        }
+                    } else if (timingStatus == ClassTimingStatus.PAST) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    brush = Brush.verticalGradient(
+                                        listOf(
+                                            colorVariant.gradientColors.first().copy(alpha = 0.5f),
+                                            colorVariant.gradientColors.last().copy(alpha = 0.3f)
+                                        )
+                                    )
+                                )
+                        )
+                    } else {
+                        // Future: classic vibrant accent stripe
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    brush = Brush.verticalGradient(colorVariant.gradientColors)
+                                )
+                        )
+                    }
+                }
 
                 // Card Main Content
                 Column(
@@ -1323,21 +1459,78 @@ private fun TimelineRowItem(
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Subject Name
-                    Text(
-                        text = classModel.courseName,
-                        fontFamily = PlusJakartaSansFontFamily,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isDark) Color(0xFFE8F0FE) else Color(0xFF1A2540),
-                        lineHeight = 22.sp
-                    )
+                    // Live Happening Now Banner
+                    if (timingStatus == ClassTimingStatus.LIVE_NOW) {
+                        val remainingMins = getClassRemainingMinutes(classModel.timeSlot)
+                        val pct = (animatedProgress * 100).toInt().coerceIn(1, 100)
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(if (isDark) Color(0x2622C55E) else Color(0x1A22C55E))
+                                .border(1.dp, Color(0x5922C55E), RoundedCornerShape(20.dp))
+                                .padding(horizontal = 9.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF22C55E))
+                            )
+                            Text(
+                                text = "HAPPENING NOW · ${remainingMins}m left ($pct%)",
+                                fontFamily = PlusJakartaSansFontFamily,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color(0xFF4ADE80) else Color(0xFF15803D)
+                            )
+                        }
+                    }
+
+                    // Course Name & Faculty Badge
+                    val courseName = classModel.courseName
+                    val hasFaculty = courseName.contains("(") && courseName.contains(")")
+                    val codePart = if (hasFaculty) courseName.substringBefore("(").trim() else courseName
+                    val facultyPart = if (hasFaculty) courseName.substringAfter("(").substringBefore(")").trim() else ""
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = codePart,
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 17.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color(0xFFE8F0FE) else Color(0xFF1A2540),
+                            lineHeight = 22.sp
+                        )
+                        if (facultyPart.isNotBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isDark) Color(0x2638BDF8) else Color(0x1F0284C7))
+                                    .border(1.dp, if (isDark) Color(0x3338BDF8) else Color(0x260284C7), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 6.dp, vertical = 1.5.dp)
+                            ) {
+                                Text(
+                                    text = facultyPart,
+                                    fontFamily = PlusJakartaSansFontFamily,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color(0xFF38BDF8) else Color(0xFF0369A1)
+                                )
+                            }
+                        }
+                    }
 
                     // Room Subtitle
                     Text(
                         text = if (classModel.room.startsWith("Room", ignoreCase = true)) classModel.room else "Room ${classModel.room}",
                         fontFamily = PlusJakartaSansFontFamily,
-                        fontSize = 13.5.sp,
+                        fontSize = 13.sp,
                         color = if (isDark) Color(0xFF6B7F9E) else Color(0xFF8898B0)
                     )
 
@@ -1360,19 +1553,19 @@ private fun TimelineRowItem(
                             Icon(
                                 imageVector = Icons.Default.Home,
                                 contentDescription = null,
-                                tint = if (isDark) Color(0xFF6B7F9E) else Color(0xFF6B7F9E),
+                                tint = if (isDark) Color(0xFF8898B0) else Color(0xFF6B7F9E),
                                 modifier = Modifier.size(11.dp)
                             )
                             Text(
                                 text = extractCleanRoomNumber(classModel.room),
                                 fontFamily = PlusJakartaSansFontFamily,
-                                fontSize = 12.5.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = if (isDark) Color(0xFF8898B0) else Color(0xFF6B7F9E)
                             )
                         }
 
-                        // Duration Tag
+                        // Duration & End Time Tag
                         Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(20.dp))
@@ -1385,13 +1578,13 @@ private fun TimelineRowItem(
                             Icon(
                                 imageVector = Icons.Default.AccessTime,
                                 contentDescription = null,
-                                tint = if (isDark) Color(0xFF6B7F9E) else Color(0xFF6B7F9E),
+                                tint = if (isDark) Color(0xFF8898B0) else Color(0xFF6B7F9E),
                                 modifier = Modifier.size(11.dp)
                             )
                             Text(
-                                text = parseClassDuration(classModel.timeSlot),
+                                text = "Ends ${timeRange.endHour} ${timeRange.endAmPm} · ${parseClassDuration(classModel.timeSlot)}",
                                 fontFamily = PlusJakartaSansFontFamily,
-                                fontSize = 12.5.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = if (isDark) Color(0xFF8898B0) else Color(0xFF6B7F9E)
                             )
@@ -1399,9 +1592,6 @@ private fun TimelineRowItem(
                     }
 
                     // Attendance Section (Locked / Live aware)
-                    val timingStatus = getClassTimingStatus(dayIndex, classModel.timeSlot)
-                    val effectiveState = getEffectiveAttendanceState(dayIndex, classModel)
-
                     when (timingStatus) {
                         ClassTimingStatus.LIVE_NOW -> {
                             Column(
@@ -1410,25 +1600,6 @@ private fun TimelineRowItem(
                                     .padding(top = 4.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(7.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(0xFF22C55E))
-                                    )
-                                    Text(
-                                        text = "LIVE CLASS — Tap to mark attendance",
-                                        fontFamily = PlusJakartaSansFontFamily,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF16A34A)
-                                    )
-                                }
-
                                 Row(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     modifier = Modifier.fillMaxWidth()
@@ -1587,7 +1758,7 @@ private fun TimelineRowItem(
                                         modifier = Modifier.size(12.dp)
                                     )
                                     Text(
-                                        text = "Locked · Available during class time (${classModel.timeSlot})",
+                                        text = "Locked · Available during class (${timeRange.fullFormattedRange})",
                                         fontFamily = PlusJakartaSansFontFamily,
                                         fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Medium,
