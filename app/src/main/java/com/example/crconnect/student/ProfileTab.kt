@@ -128,6 +128,7 @@ fun ProfileTab(
     var showAcademicOverviewPage by remember { mutableStateOf(false) }
     var showAdvisorPage by remember { mutableStateOf(false) }
     var showSettingsPage by remember { mutableStateOf(false) }
+    var showAttendanceSubPage by remember { mutableStateOf(false) }
     var notificationsEnabled by remember { mutableStateOf(true) }
     var showStudentIdDialog by remember { mutableStateOf(false) }
 
@@ -1003,8 +1004,7 @@ fun ProfileTab(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            showAcademicOverviewPage = false
-                                            onNavigateToAttendance()
+                                            showAttendanceSubPage = true
                                         }
                                 ) {
                                     Row(
@@ -1013,7 +1013,7 @@ fun ProfileTab(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = "Open full Attendance tab",
+                                            text = "Open full Attendance records",
                                             fontFamily = PlusJakartaSansFontFamily,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.SemiBold,
@@ -1207,6 +1207,66 @@ fun ProfileTab(
 
                         Spacer(modifier = Modifier.height(24.dp))
                     }
+        }
+    }
+
+    if (showAttendanceSubPage) {
+        FullScreenSubPageDialog(
+            onDismissRequest = { showAttendanceSubPage = false },
+            isDark = isDark
+        ) {
+            BackHandler {
+                showAttendanceSubPage = false
+            }
+
+            // Top App Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier.size(42.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    onClick = { showAttendanceSubPage = false }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column {
+                    Text(
+                        text = "Attendance Records",
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Weekly status & detailed breakdown",
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            AttendanceTab(
+                uiState = uiState,
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 
