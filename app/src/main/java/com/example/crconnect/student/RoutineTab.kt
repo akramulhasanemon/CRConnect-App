@@ -54,6 +54,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -86,6 +87,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -1033,7 +1035,8 @@ fun RoutineTab(
             // EMPTY STATE 2 — No routine at all (Onboarding)
             RoutineOnboardingEmptyCard(
                 isDark = isDark,
-                onScanRoutine = onScanCameraClick,
+                onScanCamera = onScanCameraClick,
+                onChooseGallery = onChooseGalleryClick,
                 onAddManually = onOpenAddClass
             )
         } else {
@@ -2871,7 +2874,8 @@ private fun TipChip(
 @Composable
 fun RoutineOnboardingEmptyCard(
     isDark: Boolean,
-    onScanRoutine: () -> Unit,
+    onScanCamera: () -> Unit,
+    onChooseGallery: () -> Unit,
     onAddManually: () -> Unit
 ) {
     Card(
@@ -2879,161 +2883,194 @@ fun RoutineOnboardingEmptyCard(
             .fillMaxWidth()
             .shadow(
                 elevation = if (isDark) 0.dp else 4.dp,
-                shape = RoundedCornerShape(24.dp),
-                ambientColor = Color(0x14000000),
-                spotColor = Color(0x14000000)
+                shape = RoundedCornerShape(26.dp),
+                ambientColor = Color.Black.copy(alpha = 0.06f),
+                spotColor = Color.Black.copy(alpha = 0.06f)
             ),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(26.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isDark) Color(0xFF111827) else Color.White
+            containerColor = MaterialTheme.colorScheme.surface
         ),
-        border = BorderStroke(1.dp, if (isDark) Color(0x1AFFFFFF) else Color(0x0F000000))
+        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline)
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 28.dp),
-            contentAlignment = Alignment.Center
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Header: Soft Badge Icon + Title + Subtitle
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.22f else 0.12f)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CalendarToday,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(30.dp)
+                )
+            }
+
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(0.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Soft icon container with brand blue glow border
-                Box(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(
-                            brush = if (isDark) {
-                                Brush.linearGradient(
-                                    colors = listOf(Color(0x330066FF), Color(0x1F3B82F6))
-                                )
-                            } else {
-                                Brush.linearGradient(
-                                    colors = listOf(Color(0x1A0066FF), Color(0x103B82F6))
-                                )
-                            }
-                        )
-                        .border(
-                            1.dp,
-                            if (isDark) Color(0x403B82F6) else Color(0x330066FF),
-                            RoundedCornerShape(24.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CalendarToday,
-                        contentDescription = null,
-                        tint = if (isDark) Color(0xFF60A5FA) else Color(0xFF0066FF),
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // Title
                 Text(
-                    text = "Your routine starts here",
+                    text = "Set Up Your Class Routine",
                     fontFamily = PlusJakartaSansFontFamily,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isDark) Color(0xFFE8F0FE) else Color(0xFF1A2540),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center
                 )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Subtitle
                 Text(
-                    text = "Scan a photo of your class routine and the app fills it in — or add classes yourself.",
+                    text = "Choose how you'd like to import your weekly schedule into CRConnect:",
                     fontFamily = PlusJakartaSansFontFamily,
-                    fontSize = 14.5.sp,
+                    fontSize = 13.5.sp,
                     fontWeight = FontWeight.Normal,
-                    color = if (isDark) Color(0xFF6B7F9E) else Color(0xFF8898B0),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
-                    lineHeight = 21.sp
+                    lineHeight = 19.sp
                 )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Primary CTA Button: Scan my routine (Brand Blue Gradient)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                        .shadow(
-                            elevation = 6.dp,
-                            shape = RoundedCornerShape(16.dp),
-                            ambientColor = Color(0x550066FF),
-                            spotColor = Color(0x550066FF)
-                        )
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(Color(0xFF0066FF), Color(0xFF0052CC))
-                            )
-                        )
-                        .clickable { onScanRoutine() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Crop,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = "Scan my routine",
-                            fontFamily = PlusJakartaSansFontFamily,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Secondary Full-Width Button: Add manually
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(46.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5FB))
-                        .border(
-                            1.dp,
-                            if (isDark) Color(0x1AFFFFFF) else Color(0xFFE2E8F0),
-                            RoundedCornerShape(14.dp)
-                        )
-                        .clickable { onAddManually() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = null,
-                            tint = if (isDark) Color(0xFF60A5FA) else Color(0xFF0066FF),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "Add manually",
-                            fontFamily = PlusJakartaSansFontFamily,
-                            fontSize = 14.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDark) Color(0xFF60A5FA) else Color(0xFF0066FF)
-                        )
-                    }
-                }
             }
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // Option 1: 📸 Scan with Camera
+            OnboardingActionTile(
+                isDark = isDark,
+                icon = Icons.Default.CameraAlt,
+                iconTint = MaterialTheme.colorScheme.primary,
+                iconBg = MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.22f else 0.12f),
+                title = "Scan Routine with Camera",
+                subtitle = "Take a photo of printed schedule for instant AI auto-fill",
+                badgeText = "Fastest",
+                badgeColor = MaterialTheme.colorScheme.primary,
+                onClick = onScanCamera
+            )
+
+            // Option 2: 🖼️ Upload from Gallery
+            OnboardingActionTile(
+                isDark = isDark,
+                icon = Icons.Default.Image,
+                iconTint = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
+                iconBg = (if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5)).copy(alpha = if (isDark) 0.22f else 0.12f),
+                title = "Upload Photo from Gallery",
+                subtitle = "Select a saved routine image or screenshot from your device",
+                badgeText = "Gallery",
+                badgeColor = if (isDark) Color(0xFF818CF8) else Color(0xFF4F46E5),
+                onClick = onChooseGallery
+            )
+
+            // Option 3: ✍️ Add Manually
+            OnboardingActionTile(
+                isDark = isDark,
+                icon = Icons.Default.Add,
+                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                iconBg = MaterialTheme.colorScheme.surfaceVariant,
+                title = "Add Classes Manually",
+                subtitle = "Type your course codes, room numbers & timings yourself",
+                badgeText = "Manual",
+                badgeColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                onClick = onAddManually
+            )
+        }
+    }
+}
+
+@Composable
+private fun OnboardingActionTile(
+    isDark: Boolean,
+    icon: ImageVector,
+    iconTint: Color,
+    iconBg: Color,
+    title: String,
+    subtitle: String,
+    badgeText: String,
+    badgeColor: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable { onClick() },
+        shape = RoundedCornerShape(18.dp),
+        color = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color(0xFFF8FAFC),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.7f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(color = iconBg, shape = RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = title,
+                        fontFamily = PlusJakartaSansFontFamily,
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Surface(
+                        shape = CircleShape,
+                        color = badgeColor.copy(alpha = if (isDark) 0.22f else 0.12f)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            fontFamily = PlusJakartaSansFontFamily,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = badgeColor,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                Text(
+                    text = subtitle,
+                    fontFamily = PlusJakartaSansFontFamily,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 15.sp
+                )
+            }
+
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
